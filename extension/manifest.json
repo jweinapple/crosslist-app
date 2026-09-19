@@ -1,0 +1,80 @@
+{
+  "manifest_version": 3,
+  "name": "Crosslist Connector",
+  "description": "Connects your local Crosslist dashboard to eBay, Facebook Marketplace, Depop, Poshmark, and Etsy using your browser login.",
+  "version": "0.4.1",
+  "permissions": ["cookies", "tabs", "scripting", "storage"],
+  "host_permissions": [
+    "https://www.facebook.com/*",
+    "https://web.facebook.com/*",
+    "https://www.ebay.com/*",
+    "https://www.ebay.co.uk/*",
+    "https://www.depop.com/*",
+    "https://webapi.depop.com/*",
+    "https://poshmark.com/*",
+    "https://www.poshmark.com/*",
+    "https://www.etsy.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*", "http://127.0.0.1:3000/*"],
+      "js": ["content-dashboard.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.facebook.com/*",
+        "https://web.facebook.com/*",
+        "https://m.facebook.com/*"
+      ],
+      "js": ["scrape-utils.js", "content-facebook.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.facebook.com/marketplace/edit*",
+        "https://www.facebook.com/marketplace/editlisting*"
+      ],
+      "js": ["content-facebook-edit.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.ebay.com/*",
+        "https://signin.ebay.com/*"
+      ],
+      "js": ["scrape-utils.js", "content-ebay.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.depop.com/*"],
+      "js": ["scrape-utils.js", "content-depop.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://poshmark.com/*",
+        "https://www.poshmark.com/*"
+      ],
+      "js": ["scrape-utils.js", "content-poshmark.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.etsy.com/*"],
+      "js": ["scrape-utils.js", "content-etsy.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "externally_connectable": {
+    "matches": ["http://localhost:3000/*", "http://127.0.0.1:3000/*"]
+  },
+  "action": {
+    "default_title": "Crosslist Connector"
+  }
+}

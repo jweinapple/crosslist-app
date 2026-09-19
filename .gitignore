@@ -1,0 +1,28 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Local data, tokens, and databases
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+server.log
+
+# Dependencies
+node_modules/
+
+# Local Vendoo extension analysis (third-party recovered source; keep off public git)
+vendoo-analysis/
+
+# OS / editor
+.DS_Store
+.cursor/

@@ -1,0 +1,4018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crosslist Dashboard</title>
+    <style>
+        :root {
+            --ebay-color: #0F66CE;
+            --facebook-color: #1877F2;
+            --depop-color: #FF2300;
+            --poshmark-color: #822533;
+            --etsy-color: #F56400;
+            --success-color: #00a878;
+            --error-color: #d32323;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f7f7f7;
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --border-color: #dcdcdc;
+            --inv-accent: #0f9d8e;
+            --inv-accent-soft: #e6f7f4;
+            --inv-flag-bg: #f8eedd;
+            --inv-flag-text: #9a6b24;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .app-shell {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .app-sidebar {
+            width: 220px;
+            flex-shrink: 0;
+            background: var(--bg-primary);
+            border-right: 1px solid var(--border-color);
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .app-brand {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            padding: 0 8px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 12px 14px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: #ede7f6;
+            color: #5e35b1;
+        }
+
+        .app-main {
+            flex: 1;
+            min-width: 0;
+            padding: 20px 24px 32px;
+            max-width: none;
+        }
+
+        #section-marketplaces,
+        #section-import {
+            max-width: 1400px;
+        }
+
+        .dashboard-section {
+            display: none;
+        }
+
+        .dashboard-section.active {
+            display: block;
+        }
+
+        .section-header {
+            margin-bottom: 24px;
+        }
+
+        .section-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .section-header p {
+            color: var(--text-secondary);
+            font-size: 15px;
+            max-width: 640px;
+        }
+
+        .section-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .marketplace-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .marketplace-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .marketplace-card-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .marketplace-card-head h2 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .marketplace-card p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            flex: 1;
+        }
+
+        .marketplace-card .btn {
+            align-self: flex-start;
+            margin-top: 4px;
+        }
+
+        .marketplace-card .btn-link {
+            align-self: flex-start;
+            margin-top: -4px;
+        }
+
+        .marketplace-card.ebay {
+            border-top: 3px solid var(--ebay-color);
+        }
+
+        .marketplace-card.facebook {
+            border-top: 3px solid var(--facebook-color);
+        }
+
+        .marketplace-card.depop {
+            border-top: 3px solid var(--depop-color);
+        }
+
+        .marketplace-card.poshmark {
+            border-top: 3px solid var(--poshmark-color);
+        }
+
+        .marketplace-card.etsy {
+            border-top: 3px solid var(--etsy-color);
+        }
+
+        @media (max-width: 768px) {
+            .app-shell {
+                flex-direction: column;
+            }
+
+            .app-sidebar {
+                width: 100%;
+                flex-direction: row;
+                flex-wrap: wrap;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                padding: 12px 16px;
+            }
+
+            .app-brand {
+                width: 100%;
+                margin-bottom: 8px;
+            }
+
+            .nav-item {
+                flex: 1;
+                justify-content: center;
+            }
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn[hidden],
+        .match-none-btn[hidden] {
+            display: none !important;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--ebay-color);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #0d5bb5;
+        }
+
+        .btn-facebook {
+            background: var(--facebook-color);
+            color: white;
+        }
+
+        .btn-facebook:hover:not(:disabled) {
+            background: #166fe0;
+        }
+
+        .btn-depop {
+            background: var(--depop-color);
+            color: white;
+        }
+
+        .btn-depop:hover:not(:disabled) {
+            background: #e01f00;
+        }
+
+        .btn-poshmark {
+            background: var(--poshmark-color);
+            color: white;
+        }
+
+        .btn-poshmark:hover:not(:disabled) {
+            background: #6b1d28;
+        }
+
+        .btn-etsy {
+            background: var(--etsy-color);
+            color: white;
+        }
+
+        .btn-etsy:hover:not(:disabled) {
+            background: #d45500;
+        }
+
+        .marketplace-login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .marketplace-login-form label {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .marketplace-login-form input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--text-primary);
+        }
+
+        .marketplace-login-form .btn {
+            align-self: stretch;
+            justify-content: center;
+            margin-top: 2px;
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e8e8e8;
+        }
+
+        .btn-danger {
+            background: var(--error-color);
+            color: white;
+        }
+
+        .btn-disconnect {
+            background: transparent;
+            color: var(--error-color);
+            border: 1px solid var(--error-color);
+        }
+
+        .btn-disconnect:hover:not(:disabled) {
+            background: #fdecea;
+        }
+
+        .btn-disconnect[hidden] {
+            display: none;
+        }
+
+        .btn-link {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 600;
+            padding: 4px 0;
+            cursor: pointer;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .btn-link:hover:not(:disabled) {
+            color: var(--text-primary);
+        }
+
+        .btn-link[hidden] {
+            display: none;
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .auth-status {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .auth-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .auth-badge.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .auth-badge.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .auth-badge .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .listings-panel {
+            background: var(--bg-primary);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .listings-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .listings-header h2 {
+            font-size: 18px;
+        }
+
+        .listings-header .selected-count {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .bulk-actions {
+            padding: 15px 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .bulk-actions.visible {
+            display: flex;
+            background: #fff8e1;
+        }
+
+        .bulk-actions-label {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--text-secondary);
+            margin-right: 4px;
+        }
+
+        .bulk-actions input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 14px;
+            width: 150px;
+        }
+
+        .bulk-actions input[type="number"] {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 14px;
+            width: 100px;
+        }
+
+        .bulk-actions .btn:disabled {
+            opacity: 0.45;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: var(--bg-secondary);
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th:hover {
+            background: #e8e8e8;
+        }
+
+        td {
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background: #fafafa;
+        }
+
+        tr.selected {
+            background: #e3f2fd;
+        }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .platform-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .platform-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .platform-badge.ebay {
+            background: var(--ebay-color);
+            color: white;
+        }
+
+        .platform-badge.facebook {
+            background: var(--facebook-color);
+            color: white;
+        }
+
+        .platform-badge.depop {
+            background: var(--depop-color);
+            color: white;
+        }
+
+        .platform-badge.poshmark {
+            background: var(--poshmark-color);
+            color: white;
+        }
+
+        .platform-badge.etsy {
+            background: var(--etsy-color);
+            color: white;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-badge.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .price {
+            font-weight: 600;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--bg-primary);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .card h3 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: var(--text-secondary);
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--ebay-color);
+            box-shadow: 0 0 0 3px rgba(15, 102, 206, 0.1);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .stat {
+            text-align: center;
+            padding: 15px;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        .log {
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            background: #1a1a1a;
+            color: #00a878;
+            padding: 15px;
+            border-radius: 6px;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 4px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .log-entry.success {
+            color: var(--success-color);
+        }
+
+        .log-entry.error {
+            color: var(--error-color);
+        }
+
+        .log-entry.info {
+            color: #17a2b8;
+        }
+
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--ebay-color);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success {
+            background: var(--success-color);
+        }
+
+        .toast.error {
+            background: var(--error-color);
+        }
+
+        .server-banner {
+            display: none;
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .server-banner.visible {
+            display: block;
+        }
+
+        .card-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .section-header-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .listed-on {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+        }
+
+        .modal-dialog {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            width: min(920px, 100%);
+            max-height: calc(100vh - 40px);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 18px 20px 8px;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+        }
+
+        .modal-close {
+            border: none;
+            background: transparent;
+            font-size: 28px;
+            line-height: 1;
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+
+        .modal-subtitle {
+            padding: 0 20px 12px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .modal-body {
+            padding: 0 20px 16px;
+            overflow: auto;
+            min-height: 180px;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 20px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .import-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .import-thumb {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 6px;
+            background: var(--bg-secondary);
+        }
+
+        .import-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .import-status.new {
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+
+        .import-status.merge {
+            background: #e3f2fd;
+            color: #0d47a1;
+        }
+
+        .import-status.imported {
+            background: #f3e5f5;
+            color: #6a1b9a;
+        }
+
+        .import-status.possible {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .image-match-banner {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 16px;
+            padding: 14px 16px;
+            background: #e8f5e9;
+            border: 1px solid #c8e6c9;
+            border-radius: 12px;
+        }
+
+        .image-match-banner.visible {
+            display: flex;
+        }
+
+        .image-match-banner-copy {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .image-match-banner-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--success-color);
+            color: white;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .image-match-banner strong {
+            display: block;
+            font-size: 14px;
+            color: #1b5e20;
+        }
+
+        .image-match-banner p {
+            font-size: 13px;
+            color: #2e7d32;
+            margin: 2px 0 0;
+        }
+
+        .match-dialog {
+            background: var(--bg-primary);
+            border-radius: 20px;
+            width: min(720px, 100%);
+            max-height: calc(100vh - 40px);
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+            padding: 16px 20px 24px;
+        }
+
+        .match-dialog-top {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .match-dialog-top .btn-link {
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .match-dialog h2 {
+            text-align: center;
+            font-size: 22px;
+            margin: 4px 0 4px;
+        }
+
+        .match-dialog-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 18px;
+        }
+
+        .match-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            padding: 4px 4px 12px;
+        }
+
+        .match-card {
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            overflow: hidden;
+            background: white;
+            cursor: pointer;
+            text-align: left;
+            padding: 0;
+            font: inherit;
+            color: inherit;
+            position: relative;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .match-card:hover {
+            border-color: #b2dfdb;
+        }
+
+        .match-card.selected {
+            border-color: var(--success-color);
+            box-shadow: 0 0 0 1px var(--success-color);
+        }
+
+        .match-card.primary {
+            cursor: default;
+        }
+
+        .match-card-check {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--success-color);
+            color: white;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            z-index: 1;
+        }
+
+        .match-card.selected .match-card-check {
+            display: flex;
+        }
+
+        .match-card img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            background: var(--bg-secondary);
+            display: block;
+        }
+
+        .match-card-body {
+            padding: 14px 14px 16px;
+        }
+
+        .match-card-title {
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.35;
+            min-height: 38px;
+            margin-bottom: 12px;
+        }
+
+        .match-card-listed {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .match-card-market {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .match-dialog-footer {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding-top: 16px;
+            flex-shrink: 0;
+        }
+
+        .match-none-btn {
+            border: 1px solid var(--border-color);
+            background: white;
+            border-radius: 999px;
+            padding: 12px 22px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            color: var(--text-primary);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .match-none-btn:hover {
+            background: var(--bg-secondary);
+        }
+
+        @media (max-width: 768px) {
+            .image-match-banner {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        .import-note {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .auth-gate {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 4000;
+            background: var(--bg-secondary);
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .auth-gate.visible {
+            display: flex;
+        }
+
+        .auth-card {
+            width: min(420px, 100%);
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 28px 24px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        }
+
+        .auth-card h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .auth-card p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 18px;
+        }
+
+        .auth-card label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .auth-card input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .auth-error {
+            color: var(--error-color);
+            font-size: 13px;
+            min-height: 18px;
+            margin-bottom: 8px;
+        }
+
+        .auth-card .btn {
+            width: 100%;
+            justify-content: center;
+            margin-bottom: 8px;
+        }
+
+        .auth-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 4px 0 14px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .auth-divider::before,
+        .auth-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-color);
+        }
+
+        .btn-google {
+            background: #ffffff;
+            color: #1f1f1f;
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-google:hover {
+            background: #f7f7f7;
+        }
+
+        .btn-google svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+
+        .sidebar-user {
+            margin-top: auto;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .sidebar-user-email {
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding: 0 8px 8px;
+            word-break: break-word;
+        }
+
+        .inventory-chrome {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .inventory-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .inventory-topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .inventory-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .inventory-pill.active {
+            background: #f3f4f6;
+        }
+
+        .inventory-pill .pill-icon {
+            width: 16px;
+            height: 16px;
+            color: var(--inv-accent);
+        }
+
+        .inventory-topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-add-item {
+            background: var(--inv-accent);
+            color: #fff;
+        }
+
+        .btn-add-item:hover:not(:disabled) {
+            background: #0c8376;
+        }
+
+        .inventory-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .inventory-status-tabs {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .inventory-tab {
+            border: none;
+            background: transparent;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .inventory-tab:hover {
+            background: #ececec;
+            color: var(--text-primary);
+        }
+
+        .inventory-tab.active {
+            background: #fff;
+            color: var(--text-primary);
+            box-shadow: 0 0 0 1px var(--border-color);
+        }
+
+        .inventory-tab-count {
+            color: var(--inv-accent);
+            font-weight: 700;
+            margin-left: 4px;
+        }
+
+        .inventory-tab:not(.active) .inventory-tab-count {
+            color: #9aa3ad;
+        }
+
+        .inventory-search-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 280px;
+            justify-content: flex-end;
+        }
+
+        .inventory-search {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 12px;
+            min-width: 240px;
+            flex: 1;
+            max-width: 420px;
+        }
+
+        .inventory-search input {
+            border: none;
+            outline: none;
+            width: 100%;
+            font-size: 14px;
+            background: transparent;
+        }
+
+        .inventory-select {
+            border: 1px solid var(--border-color);
+            background: #fff;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .inventory-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .inventory-meta-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .inventory-resync {
+            border: none;
+            background: none;
+            color: var(--inv-accent);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .inventory-resync:hover {
+            text-decoration: underline;
+        }
+
+        .inventory-filters {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .inventory-table-wrap {
+            background: #fff;
+            border: 1px solid #ececec;
+            border-radius: 12px;
+            overflow: auto;
+            max-height: calc(100vh - 220px);
+        }
+
+        table.inventory-matrix {
+            min-width: 1080px;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .inventory-matrix thead {
+            background: #fff;
+            position: sticky;
+            top: 0;
+            z-index: 3;
+        }
+
+        .inventory-matrix th,
+        .inventory-matrix td {
+            padding: 14px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            vertical-align: top;
+        }
+
+        .inventory-matrix th {
+            text-transform: none;
+            letter-spacing: 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: default;
+            white-space: nowrap;
+        }
+
+        .inventory-matrix th:hover {
+            background: #fff;
+        }
+
+        .inventory-matrix .item-col {
+            width: 320px;
+            min-width: 280px;
+            position: sticky;
+            left: 0;
+            background: #fff;
+            z-index: 2;
+            box-shadow: 8px 0 12px -12px rgba(0,0,0,0.18);
+        }
+
+        .inventory-matrix thead .item-col {
+            z-index: 4;
+        }
+
+        .inventory-matrix .mkt-col {
+            width: 148px;
+            min-width: 140px;
+        }
+
+        .inv-head-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .inv-head-market {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-primary);
+        }
+
+        .inv-head-count {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .mkt-logo {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .mkt-logo.ebay { background: linear-gradient(90deg, #e53238 25%, #0064d2 25% 50%, #f5af02 50% 75%, #86b817 75%); }
+        .mkt-logo.facebook { background: var(--facebook-color); }
+        .mkt-logo.depop { background: var(--depop-color); }
+        .mkt-logo.poshmark { background: var(--poshmark-color); }
+        .mkt-logo.etsy { background: var(--etsy-color); }
+
+        .inventory-matrix tbody tr:hover {
+            background: #fcfcfc;
+        }
+
+        .inventory-matrix tbody tr.selected {
+            background: #f3fbf9;
+        }
+
+        .inv-item-cell {
+            display: grid;
+            grid-template-columns: 18px 1fr auto;
+            gap: 10px;
+            align-items: start;
+        }
+
+        .inv-item-copy {
+            min-width: 0;
+        }
+
+        .inv-item-title {
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.35;
+            color: #1f2933;
+        }
+
+        .inv-item-sku {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #8b95a1;
+        }
+
+        .inv-price-flag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: var(--inv-flag-bg);
+            color: var(--inv-flag-text);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .inv-item-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .inv-icon-btn {
+            border: none;
+            background: transparent;
+            color: #98a2ae;
+            cursor: pointer;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .inv-icon-btn:hover {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .inv-more {
+            position: relative;
+        }
+
+        .inv-more summary {
+            list-style: none;
+            cursor: pointer;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            color: #98a2ae;
+        }
+
+        .inv-more summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .inv-more summary:hover {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .inv-more-menu {
+            position: absolute;
+            right: 0;
+            top: 30px;
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            min-width: 120px;
+            z-index: 5;
+            padding: 6px;
+        }
+
+        .inv-more-menu button {
+            width: 100%;
+            text-align: left;
+            border: none;
+            background: none;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .inv-more-menu button:hover {
+            background: #f3f4f6;
+        }
+
+        .inv-listed-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 112px;
+        }
+
+        .inv-cell-price {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .inv-cell-price a {
+            color: #9aa3ad;
+            text-decoration: none;
+            font-size: 12px;
+        }
+
+        .inv-cell-price a:hover {
+            color: var(--inv-accent);
+        }
+
+        .inv-thumb {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1;
+            max-width: 112px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #f3f4f6;
+        }
+
+        .inv-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .inv-listed-tag {
+            position: absolute;
+            left: 6px;
+            bottom: 6px;
+            background: rgba(230, 247, 244, 0.95);
+            color: var(--inv-accent);
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 999px;
+        }
+
+        .inv-empty-cell {
+            width: 100%;
+            max-width: 112px;
+            aspect-ratio: 1;
+            border: 1px dashed #e5e7eb;
+            border-radius: 12px;
+            background: #fafafa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #d1d5db;
+        }
+
+        .inv-empty-cell svg {
+            width: 36px;
+            height: 36px;
+        }
+
+        .inventory-empty {
+            padding: 64px 24px;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        .inventory-hidden-log {
+            display: none;
+        }
+
+        @media (max-width: 900px) {
+            .inventory-table-wrap {
+                max-height: none;
+            }
+            .inventory-matrix .item-col {
+                position: static;
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="auth-gate" class="auth-gate">
+        <div class="auth-card">
+            <h1>Crosslist</h1>
+            <p id="auth-copy">Create an account to connect marketplaces. OAuth tokens and inventory stay on your user, not a shared demo login.</p>
+            <a id="google-auth-btn" class="btn btn-google" href="/api/auth/google">
+                <svg viewBox="0 0 18 18" aria-hidden="true">
+                    <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+                    <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+                    <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+                    <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"/>
+                </svg>
+                Continue with Google
+            </a>
+            <div class="auth-divider">or</div>
+            <form id="auth-form">
+                <div id="auth-name-field">
+                    <label for="auth-name">Name</label>
+                    <input id="auth-name" type="text" name="name" autocomplete="name">
+                </div>
+                <label for="auth-email">Email</label>
+                <input id="auth-email" type="email" name="email" required autocomplete="email">
+                <label for="auth-password">Password</label>
+                <input id="auth-password" type="password" name="password" required minlength="8" autocomplete="new-password">
+                <div id="auth-error" class="auth-error"></div>
+                <button id="auth-submit" type="submit" class="btn btn-primary">Create account</button>
+                <button id="auth-toggle" type="button" class="btn-link">Already have an account? Sign in</button>
+            </form>
+        </div>
+    </div>
+    <div class="app-shell">
+        <nav class="app-sidebar" aria-label="Dashboard sections">
+            <div class="app-brand">Crosslist</div>
+            <button type="button" class="nav-item" data-section="marketplaces" id="nav-marketplaces">
+                Marketplaces
+            </button>
+            <button type="button" class="nav-item active" data-section="items" id="nav-items">
+                Inventory
+            </button>
+            <button type="button" class="nav-item" data-section="import" id="nav-import">
+                Bulk import
+            </button>
+            <div class="sidebar-user" id="sidebar-user" hidden>
+                <div id="sidebar-user-email" class="sidebar-user-email"></div>
+                <button id="logout-btn" type="button" class="btn btn-secondary">Log out</button>
+            </div>
+        </nav>
+
+        <div class="app-main">
+        <div id="server-banner" class="server-banner">
+            Dashboard must run through the local server. In the project folder run <code>npm start</code>, then open
+            <a href="http://localhost:3000/dashboard.html">http://localhost:3000/dashboard.html</a>.
+        </div>
+
+        <section id="section-marketplaces" class="dashboard-section" aria-labelledby="nav-marketplaces">
+            <div class="section-header">
+                <h1>Marketplaces</h1>
+                <p>Connect eBay, Depop, Etsy, and Poshmark with OAuth (Poshmark uses email and password). Facebook Marketplace connects with the Chrome extension.</p>
+            </div>
+            <div id="extension-banner" class="server-banner">
+                Facebook Marketplace uses the <strong>Crosslist Connector</strong> Chrome extension.
+                For other stores, the extension is an optional backup.
+                In Chrome: <code>chrome://extensions</code> → Developer mode → Load unpacked → select the
+                <code>extension</code> folder in this project, then refresh this page.
+            </div>
+            <div class="marketplace-grid">
+                <article class="marketplace-card ebay">
+                    <div class="marketplace-card-head">
+                        <h2>eBay</h2>
+                        <div id="ebay-auth" class="auth-badge disconnected">
+                            <span class="dot"></span>
+                            Not connected
+                        </div>
+                    </div>
+                    <p>Sign in with eBay OAuth to import active listings. The Chrome extension can connect your browser session instead.</p>
+                    <div class="card-actions">
+                        <button id="ebay-auth-btn" type="button" class="btn btn-primary">
+                            Connect eBay →
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="startBulkImport('ebay')">
+                            Import listings
+                        </button>
+                        <button id="ebay-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
+                            Disconnect
+                        </button>
+                    </div>
+                    <button id="ebay-extension-btn" type="button" class="btn-link">
+                        Or connect with Chrome extension
+                    </button>
+                </article>
+                <article class="marketplace-card facebook">
+                    <div class="marketplace-card-head">
+                        <h2>Facebook Marketplace</h2>
+                        <div id="facebook-auth" class="auth-badge disconnected">
+                            <span class="dot"></span>
+                            Not connected
+                        </div>
+                    </div>
+                    <p>Facebook Marketplace has no public listing OAuth API. Connect with the Chrome extension using your existing Facebook login.</p>
+                    <div class="card-actions">
+                        <button id="facebook-auth-btn" type="button" class="btn btn-facebook">
+                            Connect with Chrome extension
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="startBulkImport('facebook')">
+                            Import listings
+                        </button>
+                        <button id="facebook-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
+                            Disconnect
+                        </button>
+                    </div>
+                </article>
+                <article class="marketplace-card depop">
+                    <div class="marketplace-card-head">
+                        <h2>Depop</h2>
+                        <div id="depop-auth" class="auth-badge disconnected">
+                            <span class="dot"></span>
+                            Not connected
+                        </div>
+                    </div>
+                    <p>Sign in with Depop OAuth to import shop listings. The Chrome extension can connect your browser session instead.</p>
+                    <div class="card-actions">
+                        <button id="depop-auth-btn" type="button" class="btn btn-depop">
+                            Connect Depop →
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="startBulkImport('depop')">
+                            Import listings
+                        </button>
+                        <button id="depop-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
+                            Disconnect
+                        </button>
+                    </div>
+                    <button id="depop-extension-btn" type="button" class="btn-link">
+                        Or connect with Chrome extension
+                    </button>
+                </article>
+                <article class="marketplace-card poshmark">
+                    <div class="marketplace-card-head">
+                        <h2>Poshmark</h2>
+                        <div id="poshmark-auth" class="auth-badge disconnected">
+                            <span class="dot"></span>
+                            Not connected
+                        </div>
+                    </div>
+                    <p>Sign in with your Poshmark email and password. The Chrome extension can connect your browser session instead.</p>
+                    <form id="poshmark-login-form" class="marketplace-login-form">
+                        <label>
+                            Email address
+                            <input id="poshmark-email" type="email" autocomplete="username" placeholder="you@email.com">
+                        </label>
+                        <label>
+                            Password
+                            <input id="poshmark-password" type="password" autocomplete="current-password" placeholder="Password">
+                        </label>
+                        <div class="card-actions">
+                            <button id="poshmark-auth-btn" type="submit" class="btn btn-poshmark" disabled>
+                                Sign in
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="startBulkImport('poshmark')">
+                                Import listings
+                            </button>
+                            <button id="poshmark-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
+                                Disconnect
+                            </button>
+                        </div>
+                    </form>
+                    <button id="poshmark-extension-btn" type="button" class="btn-link">
+                        Or connect with Chrome extension
+                    </button>
+                </article>
+                <article class="marketplace-card etsy">
+                    <div class="marketplace-card-head">
+                        <h2>Etsy</h2>
+                        <div id="etsy-auth" class="auth-badge disconnected">
+                            <span class="dot"></span>
+                            Not connected
+                        </div>
+                    </div>
+                    <p>Sign in with Etsy OAuth to import shop listings. The Chrome extension can connect your browser session instead.</p>
+                    <div class="card-actions">
+                        <button id="etsy-auth-btn" type="button" class="btn btn-etsy">
+                            Connect Etsy →
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="startBulkImport('etsy')">
+                            Import listings
+                        </button>
+                        <button id="etsy-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
+                            Disconnect
+                        </button>
+                    </div>
+                    <button id="etsy-extension-btn" type="button" class="btn-link">
+                        Or connect with Chrome extension
+                    </button>
+                </article>
+            </div>
+        </section>
+
+        <section id="section-items" class="dashboard-section active" aria-labelledby="nav-items">
+            <div class="inventory-chrome">
+                <div class="inventory-topbar">
+                    <div class="inventory-topbar-left">
+                        <span class="inventory-pill active">
+                            <svg class="pill-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <rect x="3" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                                <rect x="14" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                                <rect x="3" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                                <rect x="14" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                            Inventory
+                        </span>
+                    </div>
+                    <div class="inventory-topbar-actions">
+                        <button type="button" class="btn btn-add-item" onclick="openAddItemModal()">+ Add item</button>
+                        <button type="button" class="btn btn-secondary" onclick="showDashboardSection('import')">Bulk import</button>
+                    </div>
+                </div>
+
+                <div class="inventory-toolbar">
+                    <div class="inventory-status-tabs" role="tablist">
+                        <button type="button" class="inventory-tab active" data-inv-tab="listed" onclick="setInventoryTab('listed')">
+                            Listed <span class="inventory-tab-count" id="inv-count-listed">0</span>
+                        </button>
+                        <button type="button" class="inventory-tab" data-inv-tab="sold" onclick="setInventoryTab('sold')">
+                            Sold <span class="inventory-tab-count" id="inv-count-sold">0</span>
+                        </button>
+                        <button type="button" class="inventory-tab" data-inv-tab="drafts" onclick="setInventoryTab('drafts')">
+                            Drafts <span class="inventory-tab-count" id="inv-count-drafts">0</span>
+                        </button>
+                    </div>
+                    <div class="inventory-search-row">
+                        <label class="inventory-search">
+                            <span aria-hidden="true">⌕</span>
+                            <input id="inventory-search" type="search" placeholder="Search..." oninput="renderListings()">
+                        </label>
+                        <select id="inventory-sort" class="inventory-select" onchange="renderListings()">
+                            <option value="updated">Imported/created at</option>
+                            <option value="title">Item name</option>
+                            <option value="price">Price</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="image-match-banner" class="image-match-banner" hidden>
+                    <div class="image-match-banner-copy">
+                        <span class="image-match-banner-icon" aria-hidden="true">✓</span>
+                        <div>
+                            <strong>Continue reviewing possible matches</strong>
+                            <p>Confirming which items are the same will make your inventory easier to manage across marketplaces.</p>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="openImageMatchModal()">Review matches</button>
+                </div>
+
+                <div class="inventory-meta">
+                    <div class="inventory-meta-left">
+                        <span id="inventory-last-synced">Not synced yet</span>
+                        <button type="button" class="inventory-resync" onclick="loadListings()">Resync</button>
+                    </div>
+                    <div class="inventory-filters">
+                        <select id="inventory-marketplace-filter" class="inventory-select" onchange="renderListings()">
+                            <option value="all">Any marketplaces</option>
+                            <option value="ebay">eBay</option>
+                            <option value="facebook">Facebook</option>
+                            <option value="depop">Depop</option>
+                            <option value="poshmark">Poshmark</option>
+                            <option value="etsy">Etsy</option>
+                        </select>
+                        <select id="inventory-issues-filter" class="inventory-select" onchange="renderListings()">
+                            <option value="all">Any issues</option>
+                            <option value="price">Price inconsistency</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="bulk-actions" class="bulk-actions">
+                    <span class="bulk-actions-label">Bulk edit all marketplaces</span>
+                    <span id="selected-count" class="selected-count">0 selected</span>
+                    <input type="text" id="bulk-title" placeholder="New title">
+                    <input type="number" id="bulk-price" placeholder="Price ($)">
+                    <input type="number" id="bulk-quantity" placeholder="Qty">
+                    <button id="bulk-apply-btn" class="btn btn-success" onclick="applyBulkEdit()" disabled>Apply</button>
+                    <button id="bulk-reduce-btn" class="btn btn-secondary" onclick="reduceSelectedPrices(10)" disabled>Reduce 10%</button>
+                    <button id="bulk-clear-btn" class="btn btn-danger" onclick="clearSelection()" disabled>Clear</button>
+                </div>
+
+                <div class="inventory-table-wrap">
+                    <table class="inventory-matrix">
+                        <thead>
+                            <tr id="inventory-head-row">
+                                <th class="item-col">
+                                    <div class="inv-head-item">
+                                        <input type="checkbox" id="select-all" onchange="toggleSelectAll(this)">
+                                        Item name
+                                    </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="listings-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="log" class="inventory-hidden-log"></div>
+        </section>
+
+        <section id="section-import" class="dashboard-section" aria-labelledby="nav-import">
+            <div class="section-header">
+                <h1>Bulk import from marketplace</h1>
+                <p>Pull live listings from eBay, Facebook, Depop, Poshmark, or Etsy into one inventory. Matching titles merge onto the same item. If listings share the same photos but have different names, you’ll be asked whether they are the same product.</p>
+            </div>
+            <div class="marketplace-grid">
+                <article class="marketplace-card ebay">
+                    <div class="marketplace-card-head">
+                        <h2>eBay</h2>
+                    </div>
+                    <p>Import active listings from your eBay seller inventory. Already imported items are skipped; matching titles are merged. Shared photos with different titles are reviewed after import.</p>
+                    <button type="button" class="btn btn-primary" onclick="startBulkImport('ebay')">
+                        Import from eBay
+                    </button>
+                </article>
+                <article class="marketplace-card facebook">
+                    <div class="marketplace-card-head">
+                        <h2>Facebook Marketplace</h2>
+                    </div>
+                    <p>Import from Marketplace after connecting with the Chrome extension.</p>
+                    <button type="button" class="btn btn-facebook" onclick="startBulkImport('facebook')">
+                        Import from Facebook
+                    </button>
+                </article>
+                <article class="marketplace-card depop">
+                    <div class="marketplace-card-head">
+                        <h2>Depop</h2>
+                    </div>
+                    <p>Import products from your Depop shop after connecting with OAuth.</p>
+                    <button type="button" class="btn btn-depop" onclick="startBulkImport('depop')">
+                        Import from Depop
+                    </button>
+                </article>
+                <article class="marketplace-card poshmark">
+                    <div class="marketplace-card-head">
+                        <h2>Poshmark</h2>
+                    </div>
+                    <p>Import closet listings after signing in with your Poshmark email and password.</p>
+                    <button type="button" class="btn btn-poshmark" onclick="startBulkImport('poshmark')">
+                        Import from Poshmark
+                    </button>
+                </article>
+                <article class="marketplace-card etsy">
+                    <div class="marketplace-card-head">
+                        <h2>Etsy</h2>
+                    </div>
+                    <p>Import shop listings after connecting with Etsy OAuth.</p>
+                    <button type="button" class="btn btn-etsy" onclick="startBulkImport('etsy')">
+                        Import from Etsy
+                    </button>
+                </article>
+            </div>
+        </section>
+        </div>
+    </div>
+
+    <div id="add-item-modal" class="modal-overlay" hidden>
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="add-item-title" style="width: min(480px, 100%);">
+            <div class="modal-header">
+                <h2 id="add-item-title">Add item</h2>
+                <button type="button" class="modal-close" onclick="closeAddItemModal()" aria-label="Close">×</button>
+            </div>
+            <p class="modal-subtitle">Added once, listed on every connected marketplace.</p>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="new-title" placeholder="Item title">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="new-description" placeholder="Item description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Price ($)</label>
+                    <input type="number" id="new-price" placeholder="0.00" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Quantity</label>
+                    <input type="number" id="new-quantity" placeholder="1" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Image URL (optional)</label>
+                    <input type="text" id="new-image" placeholder="https://...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span></span>
+                <div class="section-header-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddItemModal()">Cancel</button>
+                    <button type="button" class="btn btn-add-item" onclick="addListing()">Add item</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="import-modal" class="modal-overlay" hidden>
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="import-modal-title">
+            <div class="modal-header">
+                <h2 id="import-modal-title">Bulk import</h2>
+                <button type="button" class="modal-close" onclick="closeImportModal()" aria-label="Close">×</button>
+            </div>
+            <p id="import-modal-subtitle" class="modal-subtitle"></p>
+            <div id="import-modal-body" class="modal-body"></div>
+            <div class="modal-footer">
+                <span id="import-selected-count">0 selected</span>
+                <div class="section-header-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
+                    <button id="import-confirm-btn" type="button" class="btn btn-primary" onclick="confirmBulkImport()" disabled>
+                        Import selected
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="match-modal" class="modal-overlay" hidden>
+        <div class="match-dialog" role="dialog" aria-modal="true" aria-labelledby="match-modal-title">
+            <div class="match-dialog-top">
+                <button type="button" class="btn-link" onclick="finishImageMatchesLater()">Finish later</button>
+            </div>
+            <h2 id="match-modal-title">Are these the same product?</h2>
+            <p class="match-dialog-subtitle">Select all items that match the first one</p>
+            <div id="match-cards" class="match-cards"></div>
+            <div class="match-dialog-footer">
+                <button id="match-none-btn" type="button" class="match-none-btn" onclick="dismissCurrentImageMatch()">
+                    There are no matches
+                </button>
+                <button id="match-confirm-btn" type="button" class="btn btn-primary" onclick="confirmCurrentImageMatch()" hidden>
+                    These are the same
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        let selectedIds = new Set();
+        let listings = [];
+        let marketplaceAuth = {
+            ebay: { connected: false, mode: 'none' },
+            facebook: { connected: false, mode: 'none' },
+            depop: { connected: false, mode: 'none' },
+            poshmark: { connected: false, mode: 'none' },
+            etsy: { connected: false, mode: 'none' },
+            credentials: {},
+        };
+        let importState = {
+            platform: null,
+            candidates: [],
+            selected: new Set(),
+            source: 'none',
+            account: null,
+        };
+        let imageMatchState = {
+            groups: [],
+            index: 0,
+            selected: new Set(),
+            visible: false,
+            dismissedPairKeys: new Set(),
+        };
+
+        let currentUser = null;
+        let authMode = 'signup';
+        const DASHBOARD_SECTIONS = ['marketplaces', 'items', 'import'];
+        const INVENTORY_PLATFORMS = [
+            { id: 'ebay', label: 'eBay', mark: '' },
+            { id: 'facebook', label: 'Facebook', mark: 'f' },
+            { id: 'depop', label: 'Depop', mark: 'D' },
+            { id: 'poshmark', label: 'Poshmark', mark: 'P' },
+            { id: 'etsy', label: 'Etsy', mark: 'E' },
+        ];
+        let inventoryTab = 'listed';
+        let lastSyncedAt = null;
+        const IMPORT_COMMANDS = {
+            ebay: 'IMPORT_EBAY',
+            facebook: 'IMPORT_FACEBOOK',
+            depop: 'IMPORT_DEPOP',
+            poshmark: 'IMPORT_POSHMARK',
+            etsy: 'IMPORT_ETSY',
+        };
+
+        function showDashboardSection(sectionId) {
+            const valid = DASHBOARD_SECTIONS.includes(sectionId) ? sectionId : 'marketplaces';
+            document.querySelectorAll('.dashboard-section').forEach((el) => {
+                el.classList.toggle('active', el.id === `section-${valid}`);
+            });
+            document.querySelectorAll('.nav-item[data-section]').forEach((el) => {
+                el.classList.toggle('active', el.dataset.section === valid);
+            });
+            if (window.location.hash !== `#${valid}`) {
+                history.replaceState(null, '', `#${valid}`);
+            }
+        }
+
+        function initSectionNav() {
+            document.querySelectorAll('.nav-item[data-section]').forEach((btn) => {
+                btn.addEventListener('click', () => showDashboardSection(btn.dataset.section));
+            });
+            const hash = window.location.hash.replace('#', '');
+            showDashboardSection(DASHBOARD_SECTIONS.includes(hash) ? hash : 'items');
+            window.addEventListener('hashchange', () => {
+                const h = window.location.hash.replace('#', '');
+                showDashboardSection(DASHBOARD_SECTIONS.includes(h) ? h : 'items');
+            });
+        }
+
+        function getApiBase() {
+            if (window.location.protocol === 'file:') return '';
+            return window.location.origin;
+        }
+
+        function inventoryList() {
+            return Array.isArray(listings) ? listings : [];
+        }
+
+        async function apiFetch(path, options = {}) {
+            const { authGateOn401 = true, ...fetchOptions } = options;
+            const response = await fetch(`${getApiBase()}${path}`, {
+                credentials: 'include',
+                ...fetchOptions,
+                headers: {
+                    ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
+                    ...fetchOptions.headers,
+                },
+            });
+            let data = null;
+            const text = await response.text();
+            if (text) {
+                try {
+                    data = JSON.parse(text);
+                } catch {
+                    data = { error: text.slice(0, 180) };
+                }
+            }
+            if (response.status === 401) {
+                const error = new Error(data?.error || 'Sign in required');
+                error.status = 401;
+                if (authGateOn401) {
+                    currentUser = null;
+                    listings = [];
+                    closeImportModal();
+                    finishImageMatchesLater();
+                    setAuthMode('login');
+                    showAuthGate(
+                        data?.error && data.error !== 'Sign in required'
+                            ? data.error
+                            : 'Sign in to continue.'
+                    );
+                }
+                throw error;
+            }
+            if (!response.ok) {
+                throw new Error(data?.error || `Request failed (${response.status})`);
+            }
+            return data;
+        }
+
+        function setAuthMode(mode) {
+            authMode = mode;
+            const isSignup = mode === 'signup';
+            document.getElementById('auth-name-field').hidden = !isSignup;
+            document.getElementById('auth-copy').textContent = isSignup
+                ? 'Create an account to connect marketplaces. OAuth tokens and inventory stay on your user, not a shared demo login.'
+                : 'Sign in to your Crosslist account to manage your marketplace connections.';
+            document.getElementById('auth-submit').textContent = isSignup ? 'Create account' : 'Sign in';
+            document.getElementById('auth-toggle').textContent = isSignup
+                ? 'Already have an account? Sign in'
+                : 'Need an account? Create one';
+            document.getElementById('auth-password').autocomplete = isSignup ? 'new-password' : 'current-password';
+            document.getElementById('auth-error').textContent = '';
+        }
+
+        function showAuthGate(message = '') {
+            document.getElementById('auth-gate').classList.add('visible');
+            document.getElementById('sidebar-user').hidden = true;
+            if (message) document.getElementById('auth-error').textContent = message;
+        }
+
+        function hideAuthGate() {
+            document.getElementById('auth-gate').classList.remove('visible');
+            document.getElementById('auth-error').textContent = '';
+        }
+
+        function renderCurrentUser() {
+            const sidebar = document.getElementById('sidebar-user');
+            const email = document.getElementById('sidebar-user-email');
+            if (!currentUser) {
+                sidebar.hidden = true;
+                return;
+            }
+            email.textContent = currentUser.email;
+            sidebar.hidden = false;
+        }
+
+        async function loadCurrentUser() {
+            try {
+                const data = await apiFetch('/api/auth/me', { authGateOn401: false });
+                currentUser = data.user || null;
+                return Boolean(currentUser);
+            } catch (_error) {
+                currentUser = null;
+                return false;
+            }
+        }
+
+        async function submitAuthForm(event) {
+            event.preventDefault();
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const name = document.getElementById('auth-name').value.trim();
+            const errorEl = document.getElementById('auth-error');
+            errorEl.textContent = '';
+            try {
+                const response = await fetch(`${getApiBase()}/api/auth/${authMode === 'signup' ? 'signup' : 'login'}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, name }),
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Authentication failed');
+                currentUser = data.user;
+                hideAuthGate();
+                renderCurrentUser();
+                handleOAuthReturnParams();
+                await checkAuthStatus();
+                await loadListings();
+            } catch (error) {
+                errorEl.textContent = error.message;
+            }
+        }
+
+        async function handleLogout() {
+            await fetch(`${getApiBase()}/api/auth/logout`, { method: 'POST' });
+            currentUser = null;
+            listings = [];
+            selectedIds.clear();
+            setAuthMode('login');
+            showAuthGate();
+            renderCurrentUser();
+        }
+
+        function hasExtensionBridge() {
+            return Boolean(document.documentElement.dataset.crosslistExtensionId);
+        }
+
+        function callExtension(command, payload = {}) {
+            return new Promise((resolve, reject) => {
+                if (!hasExtensionBridge()) {
+                    reject(new Error('Crosslist Chrome extension not detected'));
+                    return;
+                }
+                const requestId = crypto.randomUUID();
+                function handler(event) {
+                    if (event.origin !== window.location.origin) return;
+                    if (event.data?.type !== 'CROSSLIST_EXT_RESPONSE') return;
+                    if (event.data.requestId !== requestId) return;
+                    window.removeEventListener('message', handler);
+                    const response = event.data.response;
+                    if (response?.error) reject(new Error(response.error));
+                    else resolve(response);
+                }
+                window.addEventListener('message', handler);
+                window.postMessage({
+                    type: 'CROSSLIST_EXT_REQUEST',
+                    requestId,
+                    command,
+                    payload
+                }, window.location.origin);
+            });
+        }
+
+        async function syncExtensionConnection(platform, extensionResult) {
+            const response = await fetch(`${getApiBase()}/api/auth/connect/extension`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    platform,
+                    account: extensionResult.account,
+                    listings: extensionResult.listings || []
+                })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to save extension session');
+            return data;
+        }
+
+        async function finishMarketplaceConnect(platform, extensionResult) {
+            const saved = await syncExtensionConnection(platform, {
+                ...extensionResult,
+                listings: [],
+            });
+            const label = platformLabel(platform);
+            const found = extensionResult.listings?.length || 0;
+            log(
+                'success',
+                `${label} connected (${saved.mode})${found ? `, ${found} listings available to import` : ''}`
+            );
+            await checkAuthStatus();
+            if (found) {
+                showToast(`${label} connected — ${found} listings ready to import`, 'success');
+                openImportModal(platform, {
+                    candidates: extensionResult.listings,
+                    source: 'extension',
+                    account: extensionResult.account,
+                });
+            } else {
+                showToast(`${label} connected. Use Bulk import when listings are visible.`, 'success');
+            }
+            return saved;
+        }
+
+        function showExtensionInstallHelp() {
+            const banner = document.getElementById('extension-banner');
+            banner.classList.add('visible');
+            return !hasExtensionBridge();
+        }
+
+        function googleAuthErrorMessage(code) {
+            if (code === 'google-config') {
+                return 'Google sign-in isn’t configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.';
+            }
+            if (code === 'google') {
+                return 'Google sign-in failed. Try again or use email and password.';
+            }
+            return '';
+        }
+
+        function consumeAuthQuery() {
+            const params = new URLSearchParams(window.location.search);
+            const authError = params.get('authError');
+            const googleSignup = params.get('googleSignup');
+            if (authError || googleSignup) {
+                history.replaceState(null, '', window.location.pathname + window.location.hash);
+            }
+            return {
+                message: googleAuthErrorMessage(authError),
+                googleSignup: googleSignup === '1',
+            };
+        }
+
+        function handleOAuthReturnParams() {
+            const params = new URLSearchParams(window.location.search);
+            const connected = params.get('connected');
+            const oauthError = params.get('oauthError');
+            const connect = params.get('connect');
+            const authQuery = consumeAuthQuery();
+            if (authQuery.googleSignup) {
+                log('success', 'Account created with Google');
+                showToast('Account created with Google', 'success');
+            }
+            if (!connected && !oauthError && connect !== 'facebook-extension') return;
+            if (connected) {
+                const label = platformLabel(connected);
+                log('success', `${label} connected with OAuth`);
+                showToast(`${label} connected with OAuth`, 'success');
+            }
+            if (oauthError) {
+                const label = platformLabel(oauthError);
+                const message = oauthCredentialMessage(oauthError, label);
+                log('info', message);
+                showToast(message, 'error');
+            }
+            history.replaceState(null, '', window.location.pathname + window.location.hash);
+            if (connect === 'facebook-extension' || oauthError === 'facebook') {
+                connectWithExtension('facebook');
+            }
+        }
+
+        function oauthCredentialMessage(platform, label) {
+            if (platform === 'facebook') {
+                return 'Facebook Marketplace connects with the Chrome extension.';
+            }
+            const keys = {
+                ebay: 'EBAY_CLIENT_ID and EBAY_CLIENT_SECRET',
+                depop: 'DEPOP_CLIENT_ID and DEPOP_CLIENT_SECRET',
+                etsy: 'ETSY_API_KEY',
+                poshmark: 'Poshmark email and password',
+            };
+            const needed = keys[platform] || `${label} OAuth credentials`;
+            return `OAuth isn’t configured for ${label} yet. Add ${needed} to .env.`;
+        }
+
+        function showServerBannerIfNeeded() {
+            const banner = document.getElementById('server-banner');
+            if (window.location.protocol === 'file:') {
+                banner.classList.add('visible');
+                return true;
+            }
+            banner.classList.remove('visible');
+            return false;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            initSectionNav();
+            showServerBannerIfNeeded();
+            setAuthMode('signup');
+            document.getElementById('auth-form').addEventListener('submit', submitAuthForm);
+            document.getElementById('auth-toggle').addEventListener('click', () => {
+                setAuthMode(authMode === 'signup' ? 'login' : 'signup');
+            });
+            document.getElementById('logout-btn').addEventListener('click', handleLogout);
+            const signedIn = await loadCurrentUser();
+            if (!signedIn) {
+                const params = new URLSearchParams(window.location.search);
+                const authQuery = consumeAuthQuery();
+                setAuthMode(params.get('auth') === 'required' ? 'login' : 'signup');
+                showAuthGate(
+                    authQuery.message ||
+                    (params.get('auth') === 'required' ? 'Sign in to connect your marketplaces.' : '')
+                );
+                return;
+            }
+            renderCurrentUser();
+            handleOAuthReturnParams();
+            document.getElementById('ebay-auth-btn').addEventListener('click', () => connectWithOAuth('ebay'));
+            document.getElementById('facebook-auth-btn').addEventListener('click', () => connectWithExtension('facebook'));
+            document.getElementById('depop-auth-btn').addEventListener('click', () => connectWithOAuth('depop'));
+            document.getElementById('etsy-auth-btn').addEventListener('click', () => connectWithOAuth('etsy'));
+            document.getElementById('ebay-extension-btn').addEventListener('click', () => connectWithExtension('ebay'));
+            document.getElementById('depop-extension-btn').addEventListener('click', () => connectWithExtension('depop'));
+            document.getElementById('poshmark-extension-btn').addEventListener('click', () => connectWithExtension('poshmark'));
+            document.getElementById('etsy-extension-btn').addEventListener('click', () => connectWithExtension('etsy'));
+            document.getElementById('ebay-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('ebay'));
+            document.getElementById('facebook-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('facebook'));
+            document.getElementById('depop-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('depop'));
+            document.getElementById('poshmark-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('poshmark'));
+            document.getElementById('etsy-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('etsy'));
+            document.getElementById('poshmark-login-form').addEventListener('submit', (event) => {
+                event.preventDefault();
+                connectPoshmarkWithPassword();
+            });
+            document.getElementById('poshmark-email').addEventListener('input', updatePoshmarkSignInState);
+            document.getElementById('poshmark-password').addEventListener('input', updatePoshmarkSignInState);
+            await checkAuthStatus();
+            await loadListings();
+            document.getElementById('import-modal').addEventListener('click', (event) => {
+                if (event.target.id === 'import-modal') closeImportModal();
+            });
+            document.getElementById('add-item-modal').addEventListener('click', (event) => {
+                if (event.target.id === 'add-item-modal') closeAddItemModal();
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape') return;
+                if (document.getElementById('match-modal').classList.contains('visible')) {
+                    finishImageMatchesLater();
+                    return;
+                }
+                if (document.getElementById('import-modal').classList.contains('visible')) {
+                    closeImportModal();
+                    return;
+                }
+                if (document.getElementById('add-item-modal').classList.contains('visible')) {
+                    closeAddItemModal();
+                }
+            });
+            document.getElementById('match-modal').addEventListener('click', (event) => {
+                if (event.target.id === 'match-modal') finishImageMatchesLater();
+            });
+        });
+
+        function listingPlatforms(listing) {
+            if (listing?.platforms && typeof listing.platforms === 'object' && !Array.isArray(listing.platforms)) {
+                return Object.keys(listing.platforms).filter((key) => listing.platforms[key]);
+            }
+            if (Array.isArray(listing?.platformListings)) {
+                return listing.platformListings.map((entry) => entry.platform || entry).filter(Boolean);
+            }
+            return listing?.platform ? [listing.platform] : [];
+        }
+
+        function platformLabel(platform) {
+            if (platform === 'ebay') return 'eBay';
+            if (platform === 'facebook') return 'Facebook';
+            if (platform === 'depop') return 'Depop';
+            if (platform === 'poshmark') return 'Poshmark';
+            if (platform === 'etsy') return 'Etsy';
+            return platform;
+        }
+
+        function marketplaceConnectButtonClass(platform) {
+            if (platform === 'facebook') return 'btn btn-facebook';
+            if (platform === 'depop') return 'btn btn-depop';
+            if (platform === 'poshmark') return 'btn btn-poshmark';
+            if (platform === 'etsy') return 'btn btn-etsy';
+            return 'btn btn-primary';
+        }
+
+        function isMarketplaceSignedIn(platform) {
+            const auth = marketplaceAuth[platform];
+            return Boolean(auth?.connected) && auth.mode !== 'none' && auth.mode !== 'demo';
+        }
+
+        function goToMarketplaceConnect(platform) {
+            closeImportModal();
+            showDashboardSection('marketplaces');
+            const card = document.querySelector(`.marketplace-card.${platform}`);
+            card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (platform === 'poshmark') {
+                document.getElementById('poshmark-email')?.focus();
+            }
+        }
+
+        function marketplaceLogoHtml(platform) {
+            const mark = INVENTORY_PLATFORMS.find((item) => item.id === platform)?.mark || platform.slice(0, 1).toUpperCase();
+            return `<span class="mkt-logo ${escapeHtml(platform)}" aria-hidden="true">${escapeHtml(mark)}</span>`;
+        }
+
+        function listingPlatformEntry(listing, platform) {
+            return listing?.platforms?.[platform] || null;
+        }
+
+        function isListedOnPlatform(listing, platform) {
+            const entry = listingPlatformEntry(listing, platform);
+            if (entry) {
+                const status = String(entry.status || listing.status || 'active').toLowerCase();
+                if (status === 'pending' || status === 'draft') return false;
+                return Boolean(entry.listingId);
+            }
+            return listingPlatforms(listing).includes(platform);
+        }
+
+        function platformPrice(listing, platform) {
+            const entry = listingPlatformEntry(listing, platform);
+            const raw = entry?.price ?? listing?.price;
+            const price = Number(raw);
+            return Number.isFinite(price) ? price : 0;
+        }
+
+        function isUsableThumb(url) {
+            const value = String(url || '').trim();
+            if (!/^https?:\/\//i.test(value)) return false;
+            return !/placehold\.co|via\.placeholder|placeholder\.com|dummyimage/i.test(value);
+        }
+
+        function displayThumbUrl(url) {
+            return String(url || '')
+                .replace(/s-l\d+\./i, 's-l500.')
+                .replace(/\/s-\w\d+\./i, '/s-l500.');
+        }
+
+        function platformImage(listing, platform) {
+            const entry = listingPlatformEntry(listing, platform);
+            const candidates = [...(entry?.images || []), ...(listing?.images || [])];
+            return candidates.find(isUsableThumb) || '';
+        }
+
+        function listingHasPriceInconsistency(listing) {
+            const prices = INVENTORY_PLATFORMS
+                .filter((platform) => isListedOnPlatform(listing, platform.id))
+                .map((platform) => Math.round(platformPrice(listing, platform.id) * 100) / 100)
+                .filter((price) => price > 0);
+            if (prices.length < 2) return false;
+            return prices.some((price) => price !== prices[0]);
+        }
+
+        function itemStatusBucket(listing) {
+            const status = String(listing?.status || 'active').toLowerCase();
+            if (status === 'sold') return 'sold';
+            if (status === 'draft' || status === 'pending') return 'drafts';
+            const listed = INVENTORY_PLATFORMS.filter((platform) => isListedOnPlatform(listing, platform.id));
+            if (listed.length && listed.every((platform) => {
+                const entryStatus = String(listingPlatformEntry(listing, platform.id)?.status || '').toLowerCase();
+                return entryStatus === 'sold';
+            })) return 'sold';
+            if (!listed.length) return 'drafts';
+            return 'listed';
+        }
+
+        function inventorySearchQuery() {
+            return String(document.getElementById('inventory-search')?.value || '').trim().toLowerCase();
+        }
+
+        function filteredInventoryList() {
+            const query = inventorySearchQuery();
+            const marketplace = document.getElementById('inventory-marketplace-filter')?.value || 'all';
+            const issues = document.getElementById('inventory-issues-filter')?.value || 'all';
+            const sort = document.getElementById('inventory-sort')?.value || 'updated';
+            const rows = inventoryList().filter((listing) => {
+                const bucket = itemStatusBucket(listing);
+                if (inventoryTab === 'listed' && bucket !== 'listed') return false;
+                if (inventoryTab === 'sold' && bucket !== 'sold') return false;
+                if (inventoryTab === 'drafts' && bucket !== 'drafts') return false;
+                if (marketplace !== 'all' && !isListedOnPlatform(listing, marketplace)) return false;
+                if (issues === 'price' && !listingHasPriceInconsistency(listing)) return false;
+                if (query) {
+                    const haystack = [
+                        listing.title,
+                        listing.sku,
+                        listing.id,
+                        listing.description,
+                    ].join(' ').toLowerCase();
+                    if (!haystack.includes(query)) return false;
+                }
+                return true;
+            });
+            rows.sort((a, b) => {
+                if (sort === 'title') return String(a.title || '').localeCompare(String(b.title || ''));
+                if (sort === 'price') return (Number(b.price) || 0) - (Number(a.price) || 0);
+                return String(b.lastUpdated || '').localeCompare(String(a.lastUpdated || ''));
+            });
+            return rows;
+        }
+
+        function formatMoney(value) {
+            const amount = Number(value);
+            if (!Number.isFinite(amount)) return '$0.00';
+            return `$${amount.toFixed(2)}`;
+        }
+
+        function formatSyncedAt(date) {
+            if (!date) return 'Not synced yet';
+            const formatted = date.toLocaleString(undefined, {
+                month: 'long',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+            return `Last synced ${formatted}`;
+        }
+
+        function hangerSvg() {
+            return `<svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                <circle cx="32" cy="14" r="5" stroke="currentColor" stroke-width="3"/>
+                <path d="M32 19v6L10 44h44L32 25Z" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M14 44h36" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+            </svg>`;
+        }
+
+        function marketplaceCellHtml(listing, platform) {
+            if (!isListedOnPlatform(listing, platform)) {
+                return `<div class="inv-empty-cell" title="Not listed on ${escapeHtml(platformLabel(platform))}">${hangerSvg()}</div>`;
+            }
+            const entry = listingPlatformEntry(listing, platform);
+            const image = platformImage(listing, platform);
+            const url = entry?.url || '';
+            const status = String(entry?.status || listing.status || 'active').toLowerCase();
+            const tag = status === 'sold' ? 'Sold' : 'Listed';
+            const link = url
+                ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open listing">↗</a>`
+                : `<span title="${tag}">↗</span>`;
+            const img = image
+                ? `<img src="${escapeHtml(displayThumbUrl(image))}" alt="" referrerpolicy="no-referrer" loading="lazy">`
+                : hangerSvg();
+            return `
+                <div class="inv-listed-cell">
+                    <div class="inv-cell-price">
+                        <span>${formatMoney(platformPrice(listing, platform))}</span>
+                        ${link}
+                    </div>
+                    <div class="inv-thumb">
+                        ${img}
+                        <span class="inv-listed-tag">${tag}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function setInventoryTab(tab) {
+            inventoryTab = tab;
+            document.querySelectorAll('.inventory-tab').forEach((button) => {
+                button.classList.toggle('active', button.dataset.invTab === tab);
+            });
+            renderListings();
+        }
+
+        function openAddItemModal() {
+            const modal = document.getElementById('add-item-modal');
+            modal.hidden = false;
+            modal.classList.add('visible');
+            document.getElementById('new-title')?.focus();
+        }
+
+        function closeAddItemModal() {
+            const modal = document.getElementById('add-item-modal');
+            modal.hidden = true;
+            modal.classList.remove('visible');
+        }
+
+        function normalizeImportTitle(title) {
+            return String(title || '')
+                .toLowerCase()
+                .replace(/[^\w\s]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function importCandidateKey(listing) {
+            return String(listing.platformListingId || listing.id || listing.title);
+        }
+
+        function annotateImportCandidatesLocal(platform, candidates) {
+            return (candidates || []).map((candidate) => {
+                const incoming = { ...candidate, platform: candidate.platform || platform };
+                const titleKey = normalizeImportTitle(incoming.title);
+                const incomingKeys = listingImageKeys(incoming);
+                const match = inventoryList().find((listing) => {
+                    const platforms = listing.platforms || {};
+                    const platformId = platforms[platform]?.listingId;
+                    if (incoming.platformListingId && platformId && String(platformId) === String(incoming.platformListingId)) {
+                        return true;
+                    }
+                    return titleKey && normalizeImportTitle(listing.title) === titleKey;
+                });
+                const imageMatch = match ? null : inventoryList().find((listing) => {
+                    if (listingPlatforms(listing).includes(platform)) return false;
+                    if (titleKey && normalizeImportTitle(listing.title) === titleKey) return false;
+                    return listingsShareImageKeys(incomingKeys, listingImageKeys(listing));
+                });
+                return {
+                    ...incoming,
+                    alreadyImported: Boolean(match && listingPlatforms(match).includes(platform)),
+                    alreadyInInventory: Boolean(match),
+                    matchedItemId: match?.id || null,
+                    possibleImageMatch: Boolean(imageMatch),
+                    possibleImageMatchId: imageMatch?.id || null,
+                    possibleImageMatchTitle: imageMatch?.title || null,
+                };
+            });
+        }
+
+        function listingImageKeys(listing) {
+            const keys = new Set();
+            for (const image of listing?.images || []) {
+                const url = String(image || '').trim();
+                if (!url) continue;
+                const normalized = normalizeImageUrl(url);
+                if (normalized) keys.add(normalized);
+                try {
+                    const parsed = new URL(url);
+                    const ebayId = parsed.pathname.match(/\/g\/([^/]+)\//i);
+                    if (ebayId?.[1]) keys.add(`ebayimg:${ebayId[1]}`);
+                } catch {
+                    // Ignore malformed image URLs.
+                }
+            }
+            keys.delete('');
+            return keys;
+        }
+
+        function normalizeImageUrl(url) {
+            const raw = String(url || '').trim();
+            if (!raw) return '';
+            const drop = new Set(['w','h','width','height','fit','crop','q','quality','size','format','fm','auto','dpr','usm','cs','v','cache','t','timestamp','_']);
+            try {
+                const parsed = new URL(raw);
+                parsed.hash = '';
+                parsed.hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+                parsed.pathname = parsed.pathname
+                    .replace(/\/s-l\d+\.(jpe?g|png|webp|gif)$/i, '/s-l.$1')
+                    .replace(/[_-](\d+x\d+|large|medium|small|thumb)\b/gi, '');
+                const kept = [];
+                parsed.searchParams.forEach((value, key) => {
+                    if (!drop.has(key.toLowerCase())) kept.push([key, value]);
+                });
+                kept.sort(([a], [b]) => a.localeCompare(b));
+                parsed.search = '';
+                for (const [key, value] of kept) parsed.searchParams.append(key, value);
+                return parsed.toString();
+            } catch {
+                return raw.split('#')[0].toLowerCase();
+            }
+        }
+
+        function listingsShareImageKeys(left, right) {
+            if (!left?.size || !right?.size) return false;
+            for (const key of left) {
+                if (right.has(key)) return true;
+            }
+            return false;
+        }
+
+        function currentImageMatchGroup() {
+            return imageMatchState.groups[imageMatchState.index] || null;
+        }
+
+        function setMatchModalVisible(visible) {
+            const modal = document.getElementById('match-modal');
+            imageMatchState.visible = visible;
+            modal.hidden = !visible;
+            modal.classList.toggle('visible', visible);
+        }
+
+        function renderImageMatchBanner() {
+            const banner = document.getElementById('image-match-banner');
+            const count = imageMatchState.groups.length;
+            banner.hidden = count === 0;
+            banner.classList.toggle('visible', count > 0);
+            const copy = banner.querySelector('p');
+            if (copy && count > 0) {
+                copy.textContent = count === 1
+                    ? 'Confirming which items are the same will make your inventory easier to manage across marketplaces.'
+                    : `${count} possible matches found. Confirming which items are the same will make your inventory easier to manage.`;
+            }
+        }
+
+        async function refreshImageMatches({ autoOpen = false, groups = null } = {}) {
+            try {
+                const data = await apiFetch('/api/listings/image-matches');
+                imageMatchState.dismissedPairKeys = new Set(data.dismissedPairKeys || []);
+                imageMatchState.groups = groups?.length ? groups : (data.groups || []);
+                renderImageMatchBanner();
+                if (autoOpen && imageMatchState.groups.length) {
+                    openImageMatchModal();
+                } else if (!imageMatchState.groups.length) {
+                    setMatchModalVisible(false);
+                } else if (imageMatchState.visible) {
+                    if (imageMatchState.index >= imageMatchState.groups.length) {
+                        imageMatchState.index = 0;
+                    }
+                    renderImageMatchModal();
+                }
+            } catch (error) {
+                if (error.status === 401) return;
+                console.warn('Could not load image matches', error);
+            }
+        }
+
+        function openImageMatchModal() {
+            if (!imageMatchState.groups.length) {
+                renderImageMatchBanner();
+                return;
+            }
+            if (imageMatchState.index >= imageMatchState.groups.length) imageMatchState.index = 0;
+            const group = currentImageMatchGroup();
+            imageMatchState.selected = new Set();
+            setMatchModalVisible(true);
+            renderImageMatchModal();
+            showDashboardSection('items');
+            if (group) log('info', `Reviewing possible match: ${group.items[0]?.title || 'item'}`);
+        }
+
+        function finishImageMatchesLater() {
+            setMatchModalVisible(false);
+            renderImageMatchBanner();
+        }
+
+        function renderImageMatchModal() {
+            const group = currentImageMatchGroup();
+            const cards = document.getElementById('match-cards');
+            const confirmBtn = document.getElementById('match-confirm-btn');
+            const noneBtn = document.getElementById('match-none-btn');
+            if (!group) {
+                setMatchModalVisible(false);
+                renderImageMatchBanner();
+                return;
+            }
+
+            const remaining = imageMatchState.groups.length;
+            document.getElementById('match-modal-title').textContent = remaining > 1
+                ? `Are these the same product? (${imageMatchState.index + 1} of ${remaining})`
+                : 'Are these the same product?';
+
+            cards.innerHTML = group.items.map((item, index) => {
+                const selected = index === 0 || imageMatchState.selected.has(item.id);
+                const image = (item.images || []).find(isUsableThumb) || '';
+                const platforms = listingPlatforms(item);
+                const platform = platforms[0] || '';
+                const title = item.title || 'Untitled Item';
+                const shortTitle = title.length > 72 ? `${title.slice(0, 69)}...` : title;
+                return `
+                    <button type="button" class="match-card ${selected ? 'selected' : ''} ${index === 0 ? 'primary' : ''}"
+                        ${index === 0 ? '' : `onclick="toggleImageMatchCandidate('${escapeHtml(item.id)}')"`}>
+                        <span class="match-card-check">✓</span>
+                        ${image ? `<img src="${escapeHtml(displayThumbUrl(image))}" alt="" referrerpolicy="no-referrer">` : '<div style="height:220px;background:var(--bg-secondary);"></div>'}
+                        <div class="match-card-body">
+                            <div class="match-card-title">${escapeHtml(shortTitle)}</div>
+                            <div class="match-card-listed">Listed on</div>
+                            <div class="match-card-market">
+                                ${platform ? `<span class="platform-badge ${platform}">${platformLabel(platform)}</span>` : ''}
+                                <span>$${Number(item.price || 0).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+
+            const hasSelection = imageMatchState.selected.size > 0;
+            confirmBtn.hidden = !hasSelection;
+            noneBtn.hidden = hasSelection;
+        }
+
+        function toggleImageMatchCandidate(id) {
+            if (imageMatchState.selected.has(id)) imageMatchState.selected.delete(id);
+            else imageMatchState.selected.add(id);
+            renderImageMatchModal();
+        }
+
+        async function resolveCurrentImageMatch(decision) {
+            const group = currentImageMatchGroup();
+            if (!group) return;
+            const primaryId = group.items[0]?.id;
+            const matchIds = decision === 'merge'
+                ? [...imageMatchState.selected]
+                : group.items.slice(1).map((item) => item.id);
+            if (decision === 'merge' && !matchIds.length) {
+                showToast('Select at least one matching item', 'error');
+                return;
+            }
+
+            try {
+                const data = await apiFetch('/api/listings/image-matches/resolve', {
+                    method: 'POST',
+                    body: JSON.stringify({ primaryId, matchIds, decision }),
+                });
+                if (decision === 'merge') {
+                    log('success', `Merged ${matchIds.length + 1} marketplace listings into one item`);
+                    showToast('Items merged into one product', 'success');
+                    selectedIds.delete(primaryId);
+                    matchIds.forEach((id) => selectedIds.delete(id));
+                    listings = inventoryList()
+                        .filter((listing) => !matchIds.includes(listing.id))
+                        .map((listing) => (listing.id === primaryId && data.listing ? data.listing : listing));
+                    renderListings();
+                    updateStats();
+                } else {
+                    log('info', 'Marked listings as not the same product');
+                }
+                imageMatchState.groups = data.groups || [];
+                imageMatchState.index = 0;
+                imageMatchState.selected = new Set();
+                renderImageMatchBanner();
+                if (imageMatchState.groups.length) {
+                    renderImageMatchModal();
+                } else {
+                    setMatchModalVisible(false);
+                    showToast('All possible matches reviewed', 'success');
+                }
+            } catch (error) {
+                if (error.status === 401) return;
+                showToast(error.message || 'Could not save match decision', 'error');
+            }
+        }
+
+        function dismissCurrentImageMatch() {
+            return resolveCurrentImageMatch('dismiss');
+        }
+
+        function confirmCurrentImageMatch() {
+            return resolveCurrentImageMatch('merge');
+        }
+
+        function setImportModalVisible(visible) {
+            const modal = document.getElementById('import-modal');
+            modal.hidden = !visible;
+            modal.classList.toggle('visible', visible);
+        }
+
+        function closeImportModal() {
+            setImportModalVisible(false);
+            importState = {
+                platform: null,
+                candidates: [],
+                selected: new Set(),
+                source: 'none',
+                account: null,
+            };
+        }
+
+        function renderImportModal(status, message) {
+            const platform = importState.platform;
+            const label = platformLabel(platform);
+            document.getElementById('import-modal-title').textContent = `Import from ${label}`;
+            const body = document.getElementById('import-modal-body');
+            const subtitle = document.getElementById('import-modal-subtitle');
+            const confirmBtn = document.getElementById('import-confirm-btn');
+
+            if (status === 'loading') {
+                subtitle.textContent = message || `Loading ${label} listings...`;
+                body.innerHTML = `<div class="empty-state"><span class="spinner"></span><p style="margin-top:12px;">Fetching listings from ${label}</p></div>`;
+                confirmBtn.disabled = true;
+                document.getElementById('import-selected-count').textContent = '0 selected';
+                return;
+            }
+
+            if (status === 'error') {
+                subtitle.textContent = '';
+                body.innerHTML = `
+                    <div class="empty-state">
+                        <p>${escapeHtml(message || 'Could not load listings')}</p>
+                        <button type="button" class="btn btn-secondary" style="margin-top:12px;" onclick="startBulkImport('${platform}')">Try again</button>
+                    </div>
+                `;
+                confirmBtn.disabled = true;
+                return;
+            }
+
+            const needsConnect = status === 'needs-connect'
+                || importState.source === 'demo'
+                || importState.source === 'none'
+                || !isMarketplaceSignedIn(platform);
+            if (needsConnect) {
+                importState.candidates = [];
+                importState.selected = new Set();
+                subtitle.textContent = `Connect ${label} to import your real inventory.`;
+                body.innerHTML = `
+                    <div class="empty-state">
+                        <p>${escapeHtml(label)} isn’t connected, so there are no listings to import.</p>
+                        <button type="button" class="${marketplaceConnectButtonClass(platform)}" style="margin-top:12px;" onclick="goToMarketplaceConnect('${platform}')">
+                            Connect ${escapeHtml(label)}
+                        </button>
+                    </div>
+                `;
+                confirmBtn.disabled = true;
+                document.getElementById('import-selected-count').textContent = '0 selected';
+                return;
+            }
+
+            const candidates = importState.candidates;
+            const newCount = candidates.filter((c) => !c.alreadyImported).length;
+            const importedCount = candidates.length - newCount;
+            if (importState.source === 'live') {
+                subtitle.textContent = `Found ${candidates.length} ${label} listing${candidates.length === 1 ? '' : 's'} via OAuth.`;
+            } else if (importState.source === 'password') {
+                subtitle.textContent = `Found ${candidates.length} ${label} listing${candidates.length === 1 ? '' : 's'} after password login.`;
+            } else if (importState.source === 'extension') {
+                subtitle.textContent = `Found ${candidates.length} live ${label} listing${candidates.length === 1 ? '' : 's'} from the Chrome extension.`;
+            } else {
+                subtitle.textContent = `Found ${candidates.length} ${label} listing${candidates.length === 1 ? '' : 's'}.`;
+            }
+
+            if (!candidates.length) {
+                body.innerHTML = `<div class="empty-state"><p>No ${label} listings found. Open your selling page and try again.</p></div>`;
+                confirmBtn.disabled = true;
+                document.getElementById('import-selected-count').textContent = '0 selected';
+                return;
+            }
+
+            body.innerHTML = `
+                <div class="import-toolbar">
+                    <span>${newCount} new · ${importedCount} already imported</span>
+                    <button type="button" class="btn btn-secondary" onclick="selectImportableCandidates()">Select new</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th></th>
+                            <th>Title</th>
+                            <th>Price</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${candidates.map((listing) => {
+                            const key = importCandidateKey(listing);
+                            const disabled = listing.alreadyImported ? 'disabled' : '';
+                            const checked = importState.selected.has(key) ? 'checked' : '';
+                            const statusClass = listing.alreadyImported
+                                ? 'imported'
+                                : listing.alreadyInInventory
+                                    ? 'merge'
+                                    : listing.possibleImageMatch
+                                        ? 'possible'
+                                        : 'new';
+                            const statusLabel = listing.alreadyImported
+                                ? 'Already imported'
+                                : listing.alreadyInInventory
+                                    ? 'Will merge'
+                                    : listing.possibleImageMatch
+                                        ? 'Possible match'
+                                        : 'New item';
+                            const image = (listing.images || []).find(isUsableThumb) || '';
+                            return `
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" ${disabled} ${checked}
+                                            onchange="toggleImportCandidate('${escapeHtml(key)}', this.checked)">
+                                    </td>
+                                    <td>${image ? `<img class="import-thumb" src="${escapeHtml(displayThumbUrl(image))}" alt="" referrerpolicy="no-referrer">` : ''}</td>
+                                    <td>${escapeHtml(listing.title || 'Untitled Item')}</td>
+                                    <td class="price">$${Number(listing.price || 0).toFixed(2)}</td>
+                                    <td><span class="import-status ${statusClass}">${statusLabel}</span></td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+            updateImportSelectionUi();
+        }
+
+        function updateImportSelectionUi() {
+            const count = importState.selected.size;
+            document.getElementById('import-selected-count').textContent = `${count} selected`;
+            document.getElementById('import-confirm-btn').disabled = count === 0;
+        }
+
+        function toggleImportCandidate(key, checked) {
+            if (checked) importState.selected.add(key);
+            else importState.selected.delete(key);
+            updateImportSelectionUi();
+        }
+
+        function selectImportableCandidates() {
+            importState.selected = new Set(
+                importState.candidates
+                    .filter((listing) => !listing.alreadyImported)
+                    .map(importCandidateKey)
+            );
+            renderImportModal('ready');
+        }
+
+        function openImportModal(platform, { candidates = [], source = 'none', account = null } = {}) {
+            importState.platform = platform;
+            importState.source = source;
+            importState.account = account;
+            importState.candidates = annotateImportCandidatesLocal(platform, candidates);
+            importState.selected = new Set(
+                importState.candidates
+                    .filter((listing) => !listing.alreadyImported)
+                    .map(importCandidateKey)
+            );
+            setImportModalVisible(true);
+            renderImportModal('ready');
+        }
+
+        async function startBulkImport(platform) {
+            if (showServerBannerIfNeeded()) {
+                showToast('Start the server with npm start', 'error');
+                return;
+            }
+
+            importState.platform = platform;
+            importState.candidates = [];
+            importState.selected = new Set();
+            importState.source = 'none';
+            importState.account = null;
+            setImportModalVisible(true);
+
+            if (!isMarketplaceSignedIn(platform)) {
+                renderImportModal('needs-connect');
+                return;
+            }
+
+            renderImportModal('loading');
+            log('info', `Starting bulk import from ${platformLabel(platform)}...`);
+
+            try {
+                const mode = marketplaceAuth[platform]?.mode;
+                if (mode === 'extension') {
+                    if (!hasExtensionBridge()) {
+                        showExtensionInstallHelp();
+                        throw new Error(
+                            platform === 'facebook'
+                                ? 'Reconnect with the Chrome extension to import Facebook Marketplace listings.'
+                                : `Reconnect with the Chrome extension, or connect ${platformLabel(platform)} with OAuth instead.`
+                        );
+                    }
+                    const result = await callExtension(IMPORT_COMMANDS[platform]);
+                    if (result.needsLogin) {
+                        renderImportModal('error', result.message || `Sign in to ${platformLabel(platform)}, then try again.`);
+                        return;
+                    }
+                    if (result.error) throw new Error(result.error);
+                    importState.source = 'extension';
+                    importState.account = result.account || `${platform}-browser-session`;
+                    importState.candidates = annotateImportCandidatesLocal(platform, result.listings || []);
+                } else {
+                    const data = await apiFetch(`/api/listings/import/candidates?platform=${encodeURIComponent(platform)}`);
+                    importState.source = data.mode || 'none';
+                    importState.candidates = annotateImportCandidatesLocal(platform, data.candidates || []);
+                }
+
+                importState.selected = new Set(
+                    importState.candidates
+                        .filter((listing) => !listing.alreadyImported)
+                        .map(importCandidateKey)
+                );
+                renderImportModal('ready');
+            } catch (error) {
+                if (error.status === 401) return;
+                log('error', `Bulk import preview failed: ${error.message}`);
+                renderImportModal('error', error.message);
+            }
+        }
+
+        async function confirmBulkImport() {
+            const platform = importState.platform;
+            const selected = importState.candidates.filter((listing) =>
+                importState.selected.has(importCandidateKey(listing))
+            );
+            if (!selected.length) {
+                showToast('Select at least one listing', 'error');
+                return;
+            }
+
+            const confirmBtn = document.getElementById('import-confirm-btn');
+            confirmBtn.disabled = true;
+            log('info', `Importing ${selected.length} ${platformLabel(platform)} listing(s)...`);
+
+            try {
+                const data = await apiFetch('/api/listings/import', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        platform,
+                        listings: selected,
+                        mode: importState.source,
+                        account: importState.account,
+                    }),
+                });
+
+                const parts = [];
+                if (data.created) parts.push(`${data.created} new`);
+                if (data.merged) parts.push(`${data.merged} merged`);
+                if (data.skipped) parts.push(`${data.skipped} skipped`);
+                log('success', `Imported from ${platformLabel(platform)}: ${parts.join(', ') || 'no changes'}`);
+                showToast(
+                    data.imported
+                        ? `Imported ${data.imported} listing${data.imported === 1 ? '' : 's'} from ${platformLabel(platform)}`
+                        : 'No new listings to import',
+                    data.imported ? 'success' : 'error'
+                );
+                closeImportModal();
+                await checkAuthStatus();
+                await loadListings({ skipImageMatches: true });
+                showDashboardSection('items');
+                await refreshImageMatches({ autoOpen: true, groups: data.imageMatches });
+            } catch (error) {
+                if (error.status === 401) return;
+                log('error', `Bulk import failed: ${error.message}`);
+                showToast(error.message, 'error');
+                confirmBtn.disabled = false;
+            }
+        }
+
+        function facebookPushListings(items) {
+            return (items || []).map((listing) => {
+                const fb = listing.platforms?.facebook;
+                const listingId = fb?.listingId || (listing.platform === 'facebook' ? listing.platformListingId : null);
+                if (!listingId) return null;
+                return { id: listing.id, price: listing.price, platformListingId: listingId };
+            }).filter(Boolean);
+        }
+
+        async function pushMarketplaceUpdates(items, { priceChanged = false } = {}) {
+            const fbListings = facebookPushListings(items);
+            if (!priceChanged || !fbListings.length) return;
+            if (marketplaceAuth.facebook?.mode !== 'extension') return;
+            if (!hasExtensionBridge()) {
+                showToast('Saved in dashboard. Reconnect the Chrome extension to push Facebook prices.', 'error');
+                showExtensionInstallHelp();
+                return;
+            }
+            showToast('Pushing price updates to marketplaces...', 'success');
+            const pushResult = await callExtension('APPLY_FACEBOOK_PRICES', { listings: fbListings });
+            log(
+                'success',
+                `Marketplace push: ${pushResult.successCount} succeeded, ${pushResult.failCount} failed`
+            );
+            showToast(
+                `Updated on marketplaces: ${pushResult.successCount} ok, ${pushResult.failCount} failed`,
+                pushResult.failCount ? 'error' : 'success'
+            );
+        }
+
+        async function reduceSelectedPrices(percent = 10) {
+            if (showServerBannerIfNeeded()) {
+                showToast('Start the server with npm start', 'error');
+                return;
+            }
+            if (selectedIds.size === 0) {
+                showToast('Select items to update', 'error');
+                return;
+            }
+            if (!confirm(`Reduce prices by ${percent}% for ${selectedIds.size} item(s) on all marketplaces?`)) {
+                return;
+            }
+
+            log('info', `Reducing ${selectedIds.size} item prices by ${percent}% across all marketplaces...`);
+
+            try {
+                const response = await fetch(`${getApiBase()}/api/listings/adjust-prices`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: Array.from(selectedIds), percent: -percent }),
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Price adjustment failed');
+
+                log('success', `Updated ${data.count} item prices in the managed inventory`);
+                await pushMarketplaceUpdates(data.listings || [], { priceChanged: true });
+                await loadListings();
+            } catch (error) {
+                log('error', 'Price reduction failed: ' + error.message);
+                showToast(error.message, 'error');
+            }
+        }
+
+        function connectWithOAuth(platform) {
+            if (platform === 'facebook') {
+                connectWithExtension('facebook');
+                return;
+            }
+            if (showServerBannerIfNeeded()) {
+                showToast('Start the server with npm start', 'error');
+                return;
+            }
+            if (marketplaceAuth[platform]?.connected) return;
+            log('info', `Connecting ${platformLabel(platform)} with OAuth...`);
+            window.location.href = `${getApiBase()}/api/auth/${platform}`;
+        }
+
+        async function connectWithExtension(platform) {
+            if (showServerBannerIfNeeded()) {
+                showToast('Start the server with npm start', 'error');
+                return;
+            }
+            if (marketplaceAuth[platform]?.connected) return;
+            const commands = {
+                ebay: 'CONNECT_EBAY',
+                facebook: 'CONNECT_FACEBOOK',
+                depop: 'CONNECT_DEPOP',
+                poshmark: 'CONNECT_POSHMARK',
+                etsy: 'CONNECT_ETSY',
+            };
+            log('info', `Connecting ${platformLabel(platform)} via Chrome extension...`);
+            try {
+                if (!hasExtensionBridge()) {
+                    showExtensionInstallHelp();
+                    throw new Error('Install the Crosslist Chrome extension to use this option');
+                }
+
+                const extensionResult = await callExtension(commands[platform]);
+                if (extensionResult.needsLogin) {
+                    showToast(extensionResult.message, 'error');
+                    log('info', extensionResult.message);
+                    if (extensionResult.debug) {
+                        log('info', `${platformLabel(platform)} page: ${extensionResult.debug.pageState} @ ${extensionResult.debug.url}`);
+                    }
+                    return;
+                }
+                if (!extensionResult.connected) {
+                    throw new Error(extensionResult.error || `${platformLabel(platform)} connect failed`);
+                }
+
+                await finishMarketplaceConnect(platform, extensionResult);
+            } catch (error) {
+                log('error', `${platformLabel(platform)} extension connect failed: ` + error.message);
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function handleMarketplaceDisconnect(platform) {
+            const label = platformLabel(platform);
+            if (!confirm(`Disconnect ${label}? Imported listings stay in your inventory. You can reconnect anytime.`)) {
+                return;
+            }
+            if (showServerBannerIfNeeded()) {
+                showToast('Start the server with npm start', 'error');
+                return;
+            }
+            log('info', `Disconnecting ${label}...`);
+            try {
+                const response = await fetch(`${getApiBase()}/api/auth/disconnect`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ platform }),
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || `Failed to disconnect ${label}`);
+                log('success', `${label} disconnected`);
+                showToast(`${label} disconnected`, 'success');
+                await checkAuthStatus();
+            } catch (error) {
+                log('error', `${label} disconnect failed: ` + error.message);
+                showToast(error.message, 'error');
+            }
+        }
+
+        function updatePoshmarkSignInState() {
+            const email = document.getElementById('poshmark-email')?.value.trim();
+            const password = document.getElementById('poshmark-password')?.value;
+            const btn = document.getElementById('poshmark-auth-btn');
+            if (!btn) return;
+            btn.disabled = Boolean(marketplaceAuth.poshmark?.connected) || !email || !password;
+        }
+
+        async function connectPoshmarkWithPassword() {
+            if (showServerBannerIfNeeded()) {
+                showToast('Start the server with npm start', 'error');
+                return;
+            }
+            if (marketplaceAuth.poshmark?.connected) return;
+            const email = document.getElementById('poshmark-email').value.trim();
+            const password = document.getElementById('poshmark-password').value;
+            if (!email || !password) {
+                showToast('Enter your Poshmark email and password', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('poshmark-auth-btn');
+            btn.disabled = true;
+            btn.textContent = 'Signing in...';
+            log('info', 'Signing in to Poshmark with email and password...');
+            try {
+                const response = await fetch(`${getApiBase()}/api/auth/connect/poshmark`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Poshmark sign-in failed');
+                document.getElementById('poshmark-password').value = '';
+                log('success', `Poshmark connected (${data.mode}${data.account ? `, ${data.account}` : ''})`);
+                showToast('Poshmark connected with password login', 'success');
+                await checkAuthStatus();
+            } catch (error) {
+                log('error', 'Poshmark sign-in failed: ' + error.message);
+                showToast(error.message, 'error');
+                if (/extension/i.test(error.message)) showExtensionInstallHelp();
+                updatePoshmarkSignInState();
+                btn.textContent = 'Sign in';
+            }
+        }
+
+        async function checkAuthStatus() {
+            if (showServerBannerIfNeeded()) {
+                updateAuthBadge('ebay', false);
+                updateAuthBadge('facebook', false);
+                updateAuthBadge('depop', false);
+                updateAuthBadge('poshmark', false);
+                updateAuthBadge('etsy', false);
+                return;
+            }
+            try {
+                const status = await apiFetch('/api/auth/status');
+                marketplaceAuth = {
+                    ebay: status.ebay || { connected: false, mode: 'none' },
+                    facebook: status.facebook || { connected: false, mode: 'none' },
+                    depop: status.depop || { connected: false, mode: 'none' },
+                    poshmark: status.poshmark || { connected: false, mode: 'none' },
+                    etsy: status.etsy || { connected: false, mode: 'none' },
+                    credentials: status.credentials || {},
+                };
+                updateAuthBadge('ebay', status.ebay.connected, status.ebay.mode);
+                updateAuthBadge('facebook', status.facebook.connected, status.facebook.mode);
+                updateAuthBadge('depop', status.depop?.connected, status.depop?.mode);
+                updateAuthBadge('poshmark', status.poshmark?.connected, status.poshmark?.mode);
+                updateAuthBadge('etsy', status.etsy?.connected, status.etsy?.mode);
+            } catch (error) {
+                updateAuthBadge('ebay', false);
+                updateAuthBadge('facebook', false);
+                updateAuthBadge('depop', false);
+                updateAuthBadge('poshmark', false);
+                updateAuthBadge('etsy', false);
+                if (error.status !== 401) {
+                    log('error', 'Auth status unavailable. Is the server running?');
+                }
+            }
+        }
+
+        function updateAuthBadge(platform, connected, mode = 'demo') {
+            const badge = document.getElementById(`${platform}-auth`);
+            const btn = document.getElementById(`${platform}-auth-btn`);
+            const disconnectBtn = document.getElementById(`${platform}-disconnect-btn`);
+            const labels = {
+                ebay: 'eBay',
+                facebook: 'Facebook',
+                depop: 'Depop',
+                poshmark: 'Poshmark',
+                etsy: 'Etsy',
+            };
+            const label = labels[platform] || platform;
+            const extensionBtn = document.getElementById(`${platform}-extension-btn`);
+            const emailInput = document.getElementById(`${platform}-email`);
+            const passwordInput = document.getElementById(`${platform}-password`);
+
+            if (connected) {
+                badge.className = 'auth-badge connected';
+                badge.innerHTML = '<span class="dot"></span> Connected';
+                if (mode === 'live') btn.textContent = 'Connected (OAuth) ✓';
+                else if (mode === 'password') btn.textContent = 'Connected (password) ✓';
+                else if (mode === 'extension') btn.textContent = 'Connected (extension) ✓';
+                else if (mode === 'demo') btn.textContent = 'Connected (demo) ✓';
+                else btn.textContent = 'Connected ✓';
+                btn.disabled = true;
+                if (disconnectBtn) disconnectBtn.hidden = false;
+                if (extensionBtn) extensionBtn.hidden = true;
+                if (emailInput) emailInput.disabled = true;
+                if (passwordInput) {
+                    passwordInput.disabled = true;
+                    passwordInput.value = '';
+                }
+            } else {
+                badge.className = 'auth-badge disconnected';
+                badge.innerHTML = '<span class="dot"></span> Not connected';
+                btn.textContent = platform === 'poshmark'
+                    ? 'Sign in'
+                    : platform === 'facebook'
+                        ? 'Connect with Chrome extension'
+                        : `Connect ${label} →`;
+                btn.disabled = false;
+                if (disconnectBtn) disconnectBtn.hidden = true;
+                if (extensionBtn) extensionBtn.hidden = false;
+                if (emailInput) emailInput.disabled = false;
+                if (passwordInput) passwordInput.disabled = false;
+                if (platform === 'poshmark') updatePoshmarkSignInState();
+            }
+        }
+
+        // Listings CRUD
+        async function loadListings(options = {}) {
+            log('info', 'Loading listings...');
+            
+            try {
+                const data = await apiFetch('/api/listings');
+                listings = Array.isArray(data) ? data : [];
+                lastSyncedAt = new Date();
+                const syncedLabel = document.getElementById('inventory-last-synced');
+                if (syncedLabel) syncedLabel.textContent = formatSyncedAt(lastSyncedAt);
+                renderListings();
+                updateStats();
+                log('success', `Loaded ${listings.length} listings`);
+                if (!options.skipImageMatches) {
+                    await refreshImageMatches({ autoOpen: false });
+                }
+            } catch (error) {
+                listings = [];
+                renderListings();
+                updateStats();
+                log('error', 'Failed to load listings: ' + error.message);
+                if (error.status !== 401) showToast('Failed to load listings', 'error');
+            }
+        }
+
+        function renderInventoryHeader(counts) {
+            const headRow = document.getElementById('inventory-head-row');
+            if (!headRow) return;
+            const marketHeaders = INVENTORY_PLATFORMS.map((platform) => `
+                <th class="mkt-col">
+                    <div class="inv-head-market">
+                        ${marketplaceLogoHtml(platform.id)}
+                        ${escapeHtml(platform.label)}
+                        <span class="inv-head-count">${counts[platform.id] || 0}</span>
+                    </div>
+                </th>
+            `).join('');
+            headRow.innerHTML = `
+                <th class="item-col">
+                    <div class="inv-head-item">
+                        <input type="checkbox" id="select-all" onchange="toggleSelectAll(this)">
+                        Item name
+                    </div>
+                </th>
+                ${marketHeaders}
+            `;
+        }
+
+        function renderListings() {
+            const tbody = document.getElementById('listings-body');
+            if (!tbody) return;
+            const allRows = inventoryList();
+            const bucketCounts = { listed: 0, sold: 0, drafts: 0 };
+            const marketplaceCounts = Object.fromEntries(INVENTORY_PLATFORMS.map((platform) => [platform.id, 0]));
+            allRows.forEach((listing) => {
+                bucketCounts[itemStatusBucket(listing)] += 1;
+                if (itemStatusBucket(listing) !== 'listed') return;
+                INVENTORY_PLATFORMS.forEach((platform) => {
+                    if (isListedOnPlatform(listing, platform.id)) marketplaceCounts[platform.id] += 1;
+                });
+            });
+            const listedEl = document.getElementById('inv-count-listed');
+            const soldEl = document.getElementById('inv-count-sold');
+            const draftsEl = document.getElementById('inv-count-drafts');
+            if (listedEl) listedEl.textContent = bucketCounts.listed;
+            if (soldEl) soldEl.textContent = bucketCounts.sold;
+            if (draftsEl) draftsEl.textContent = bucketCounts.drafts;
+            renderInventoryHeader(marketplaceCounts);
+
+            const rows = filteredInventoryList();
+            const colCount = INVENTORY_PLATFORMS.length + 1;
+            if (rows.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="${colCount}">
+                            <div class="inventory-empty">
+                                <div class="empty-state-icon">📦</div>
+                                <p>No items yet</p>
+                                <p style="font-size: 12px; margin-top: 5px;">Add an item, or bulk import listings from a connected marketplace</p>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                const selectAll = document.getElementById('select-all');
+                if (selectAll) selectAll.checked = false;
+                return;
+            }
+
+            tbody.innerHTML = rows.map((listing) => {
+                const sku = listing.sku ? `SKU: ${escapeHtml(listing.sku)}` : '';
+                const flag = listingHasPriceInconsistency(listing)
+                    ? `<div class="inv-price-flag">⚠ Price inconsistency</div>`
+                    : '';
+                const cells = INVENTORY_PLATFORMS.map((platform) =>
+                    `<td class="mkt-col">${marketplaceCellHtml(listing, platform.id)}</td>`
+                ).join('');
+                return `
+                <tr class="${selectedIds.has(listing.id) ? 'selected' : ''}" data-id="${listing.id}">
+                    <td class="item-col">
+                        <div class="inv-item-cell">
+                            <input type="checkbox" ${selectedIds.has(listing.id) ? 'checked' : ''}
+                                   onchange="toggleSelect('${listing.id}', this.checked)">
+                            <div class="inv-item-copy">
+                                <div class="inv-item-title">${escapeHtml(listing.title)}</div>
+                                ${sku ? `<div class="inv-item-sku">${sku}</div>` : ''}
+                                ${flag}
+                            </div>
+                            <div class="inv-item-actions">
+                                <details class="inv-more">
+                                    <summary aria-label="Item actions">⋮</summary>
+                                    <div class="inv-more-menu">
+                                        <button type="button" onclick="editListing('${listing.id}')">Edit</button>
+                                        <button type="button" onclick="deleteListing('${listing.id}')">Delete</button>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+                    </td>
+                    ${cells}
+                </tr>
+                `;
+            }).join('');
+
+            const selectAll = document.getElementById('select-all');
+            if (selectAll) {
+                selectAll.checked = rows.length > 0 && rows.every((listing) => selectedIds.has(listing.id));
+            }
+        }
+
+        function updateStats() {
+            renderListings();
+        }
+
+        // Selection
+        function toggleSelect(id, checked) {
+            if (checked) {
+                selectedIds.add(id);
+            } else {
+                selectedIds.delete(id);
+            }
+            updateBulkActions();
+            renderListings();
+        }
+
+        function toggleSelectAll(checkbox) {
+            const rows = filteredInventoryList();
+            if (checkbox.checked) {
+                rows.forEach(l => selectedIds.add(l.id));
+            } else {
+                rows.forEach(l => selectedIds.delete(l.id));
+            }
+            updateBulkActions();
+            renderListings();
+        }
+
+        function clearSelection() {
+            selectedIds.clear();
+            document.getElementById('select-all').checked = false;
+            updateBulkActions();
+            renderListings();
+        }
+
+        function updateBulkActions() {
+            const bulkActions = document.getElementById('bulk-actions');
+            const count = selectedIds.size;
+            const enabled = count > 0;
+            document.getElementById('selected-count').textContent = `${count} selected`;
+            bulkActions.classList.toggle('visible', enabled);
+            ['bulk-apply-btn', 'bulk-reduce-btn', 'bulk-clear-btn'].forEach((id) => {
+                document.getElementById(id).disabled = !enabled;
+            });
+        }
+
+        // Bulk edit
+        async function applyBulkEdit() {
+            if (selectedIds.size === 0) {
+                showToast('No items selected', 'error');
+                return;
+            }
+
+            const title = document.getElementById('bulk-title').value;
+            const price = document.getElementById('bulk-price').value;
+            const quantity = document.getElementById('bulk-quantity').value;
+
+            const updates = {};
+            if (title) updates.title = title;
+            if (price) updates.price = parseFloat(price);
+            if (quantity) updates.quantity = parseInt(quantity);
+
+            if (Object.keys(updates).length === 0) {
+                showToast('No changes specified', 'error');
+                return;
+            }
+
+            log('info', `Applying bulk edit to ${selectedIds.size} items across all marketplaces...`);
+
+            try {
+                const response = await fetch(`${getApiBase()}/api/listings/bulk`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: Array.from(selectedIds), updates })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Bulk edit failed');
+                
+                const successCount = data.results.filter(r => r.success).length;
+                const failCount = data.results.filter(r => !r.success).length;
+
+                if (successCount > 0) {
+                    log('success', `Updated ${successCount} items successfully`);
+                    showToast(`Updated ${successCount} items on all marketplaces`, 'success');
+                }
+                if (failCount > 0) {
+                    log('error', `Failed to update ${failCount} items`);
+                    showToast(`Failed to update ${failCount} items`, 'error');
+                }
+
+                document.getElementById('bulk-title').value = '';
+                document.getElementById('bulk-price').value = '';
+                document.getElementById('bulk-quantity').value = '';
+
+                if (updates.price !== undefined) {
+                    const updatedItems = data.results.filter((r) => r.success).map((r) => r.listing);
+                    await pushMarketplaceUpdates(updatedItems, { priceChanged: true });
+                }
+
+                loadListings();
+            } catch (error) {
+                log('error', 'Bulk edit failed: ' + error.message);
+                showToast('Bulk edit failed', 'error');
+            }
+        }
+
+        // Single listing operations
+        async function editListing(id) {
+            const listing = inventoryList().find(l => l.id === id);
+            if (!listing) return;
+
+            const newTitle = prompt('Edit title:', listing.title);
+            if (newTitle === null) return;
+
+            const newPrice = prompt('Edit price:', listing.price);
+            if (newPrice === null) return;
+
+            try {
+                const response = await fetch(`${getApiBase()}/api/listings/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle, price: parseFloat(newPrice) })
+                });
+
+                if (response.ok) {
+                    const updated = await response.json();
+                    log('success', `Updated item on all marketplaces: ${newTitle}`);
+                    showToast('Item updated on all marketplaces', 'success');
+                    if (parseFloat(newPrice) !== parseFloat(listing.price)) {
+                        await pushMarketplaceUpdates([updated], { priceChanged: true });
+                    }
+                    loadListings();
+                } else {
+                    throw new Error('Update failed');
+                }
+            } catch (error) {
+                log('error', 'Failed to update listing');
+                showToast('Failed to update listing', 'error');
+            }
+        }
+
+        async function deleteListing(id) {
+            if (!confirm('Remove this item from the managed inventory?')) return;
+
+            try {
+                const response = await fetch(`${getApiBase()}/api/listings/${id}`, { method: 'DELETE' });
+                
+                if (response.ok) {
+                    log('success', 'Listing deleted');
+                    showToast('Listing deleted', 'success');
+                    selectedIds.delete(id);
+                    updateBulkActions();
+                    loadListings();
+                } else {
+                    throw new Error('Delete failed');
+                }
+            } catch (error) {
+                log('error', 'Failed to delete listing');
+                showToast('Failed to delete listing', 'error');
+            }
+        }
+
+        // Add new listing
+        async function addListing() {
+            const title = document.getElementById('new-title').value;
+            const description = document.getElementById('new-description').value;
+            const price = document.getElementById('new-price').value;
+            const quantity = document.getElementById('new-quantity').value;
+            const image = document.getElementById('new-image').value;
+
+            if (!title) {
+                showToast('Title is required', 'error');
+                return;
+            }
+
+            log('info', 'Adding item to managed inventory...');
+
+            try {
+                const response = await fetch(`${getApiBase()}/api/listings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, description, price, quantity, images: image ? [image] : [] })
+                });
+
+                if (response.ok) {
+                    log('success', 'Item added to managed inventory');
+                    showToast('Item added for all marketplaces', 'success');
+                    closeAddItemModal();
+                    
+                    // Clear form
+                    document.getElementById('new-title').value = '';
+                    document.getElementById('new-description').value = '';
+                    document.getElementById('new-price').value = '';
+                    document.getElementById('new-quantity').value = '';
+                    document.getElementById('new-image').value = '';
+                    
+                    loadListings();
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to add listing');
+                }
+            } catch (error) {
+                log('error', 'Failed to add listing: ' + error.message);
+                showToast('Failed to add listing', 'error');
+            }
+        }
+
+        // Utility functions
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function log(type, message) {
+            const logDiv = document.getElementById('log');
+            if (!logDiv) return;
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            // Keep only last 50 entries
+            while (logDiv.children.length > 50) {
+                logDiv.removeChild(logDiv.firstChild);
+            }
+        }
+
+        function showToast(message, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

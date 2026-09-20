@@ -23,6 +23,9 @@ node_modules/
 # Local Vendoo extension analysis (third-party recovered source; keep off public git)
 vendoo-analysis/
 
+# Local setup notes
+openrouter-cursor-setup.md
+
 # OS / editor
 .DS_Store
 .cursor/

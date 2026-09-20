@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hey Jeremy</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #05080f;
+    color: #7CFFB2;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1.25rem; padding: 1rem 1rem; box-sizing: border-box; text-align: center;
+  }
+  h1 { margin: 0; font-size: clamp(1rem, 4vw, 1.75rem); letter-spacing: .15em; text-transform: uppercase; }
+  p { margin: 0; opacity: .7; font-size: .85rem; }
+  .screen { position: relative; width: min(90vw, 62vh); aspect-ratio: 3 / 4; border: 2px solid #1f3a2c; box-shadow: 0 0 40px #0f5 inset, 0 0 30px #0f52; }
+  canvas { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+  .screen::after { /* CRT scanlines */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(to bottom, #0000 0 2px, #0006 2px 3px);
+  }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+  <h1>Welcome back, Jeremy</h1>
+  <div class="screen"><canvas id="c" width="60" height="80"></canvas></div>
+  <p>Digitized at 60&times;80. Built with love by your sibling. <a href="/dashboard.html">Back to work &rarr;</a></p>
+
+<script>
+(function () {
+  var W = 60, H = 80;
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+
+  // 2-tone shading so it reads as a chunky pixel-art sprite.
+  var SKIN = '#ffb98a', SHADE = '#e2946a', HEAD = '#ff8f9c', HEAD_SHADE = '#e0677a', OUT = '#3a1f14';
+
+  // Shape is defined analytically, then sampled per pixel.
+  var shaft = { cx: 30, w: 15, top: 24, bottom: 58 };
+  var balls = [{ cx: 20, cy: 62, r: 11 }, { cx: 40, cy: 62, r: 11 }];
+  var head = { cx: 30, cy: shaft.top, rx: shaft.w / 2 + 3, ry: 13 };
+
+  function inShaft(x, y) { return Math.abs(x - shaft.cx) <= shaft.w / 2 && y >= shaft.top && y <= shaft.bottom; }
+  function inBall(x, y) { return balls.some(function (b) { var dx = x - b.cx, dy = y - b.cy; return dx * dx + dy * dy <= b.r * b.r; }); }
+  function inHead(x, y) { var dx = (x - head.cx) / head.rx, dy = (y - head.cy) / head.ry; return dx * dx + dy * dy <= 1 && y <= head.cy + 3; }
+  function solid(x, y) { return inShaft(x, y) || inBall(x, y) || inHead(x, y); }
+
+  function draw(t) {
+    ctx.fillStyle = '#05080f';
+    ctx.fillRect(0, 0, W, H);
+    var bob = Math.round(Math.sin(t / 400) * 1.5); // gentle bob
+    for (var y = 0; y < H; y++) {
+      for (var x = 0; x < W; x++) {
+        var sy = y - bob;
+        if (!solid(x, sy)) continue;
+        var edge = !solid(x - 1, sy) || !solid(x + 1, sy) || !solid(x, sy - 1) || !solid(x, sy + 1);
+        var isHead = inHead(x, sy) && sy < head.cy + 2;
+        var lit = x < shaft.cx - 2; // light from the left
+        ctx.fillStyle = edge ? OUT : isHead ? (lit ? HEAD : HEAD_SHADE) : (lit ? SKIN : SHADE);
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    // little shine on the head
+    ctx.fillStyle = '#fff8';
+    ctx.fillRect(26, 14 + bob, 3, 2);
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

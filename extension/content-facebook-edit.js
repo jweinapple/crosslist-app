@@ -1,7 +1,12 @@
 function setNativeInputValue(input, value) {
   const descriptor = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
-  descriptor?.set?.call(input, String(value));
+  const rendered = String(value);
+  input.focus();
+  input._valueTracker?.setValue?.('');
+  descriptor?.set?.call(input, rendered);
+  input.value = rendered;
   input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new InputEvent('input', { bubbles: true, data: rendered, inputType: 'insertText' }));
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 

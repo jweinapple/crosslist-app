@@ -92,6 +92,19 @@
             color: #5e35b1;
         }
 
+        .nav-icon,
+        .section-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+
+        .section-icon {
+            width: 26px;
+            height: 26px;
+            color: #5e35b1;
+        }
+
         .app-main {
             flex: 1;
             min-width: 0;
@@ -100,7 +113,8 @@
         }
 
         #section-marketplaces,
-        #section-import {
+        #section-import,
+        #section-list {
             max-width: 1400px;
         }
 
@@ -117,6 +131,9 @@
         }
 
         .section-header h1 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
             font-size: 28px;
             font-weight: 700;
             margin-bottom: 8px;
@@ -161,8 +178,18 @@
         }
 
         .marketplace-card-head h2 {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
             font-size: 18px;
             font-weight: 700;
+        }
+
+        .marketplace-card-head .mkt-logo {
+            width: 26px;
+            height: 26px;
+            font-size: 13px;
+            border-radius: 6px;
         }
 
         .marketplace-card p {
@@ -179,6 +206,14 @@
         .marketplace-card .btn-link {
             align-self: flex-start;
             margin-top: -4px;
+        }
+
+        .marketplace-card .btn-google {
+            gap: 8px;
+        }
+
+        .marketplace-card .auth-divider {
+            margin: 12px 0 4px;
         }
 
         .marketplace-card.ebay {
@@ -688,33 +723,8 @@
             text-transform: uppercase;
         }
 
-        .log {
-            max-height: 300px;
-            overflow-y: auto;
-            font-family: monospace;
-            font-size: 12px;
-            background: #1a1a1a;
-            color: #00a878;
-            padding: 15px;
-            border-radius: 6px;
-        }
-
-        .log-entry {
-            margin-bottom: 5px;
-            padding: 4px 0;
-            border-bottom: 1px solid #333;
-        }
-
-        .log-entry.success {
-            color: var(--success-color);
-        }
-
-        .log-entry.error {
-            color: var(--error-color);
-        }
-
-        .log-entry.info {
-            color: #17a2b8;
+        .inventory-hidden-log {
+            display: none;
         }
 
         .empty-state {
@@ -1730,6 +1740,144 @@
             display: none;
         }
 
+        .bulk-list-layout {
+            display: grid;
+            grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+            gap: 24px;
+            align-items: start;
+        }
+
+        .bulk-photo-card,
+        .bulk-details-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 18px;
+        }
+
+        .bulk-dropzone {
+            border: 1.5px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 28px 16px;
+            text-align: center;
+            color: var(--text-secondary);
+            cursor: pointer;
+            background: #fafafa;
+        }
+
+        .bulk-dropzone:hover,
+        .bulk-dropzone.dragover {
+            border-color: var(--inv-accent);
+            background: var(--inv-accent-soft);
+            color: var(--text-primary);
+        }
+
+        .bulk-dropzone input {
+            display: none;
+        }
+
+        .bulk-photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .bulk-photo-thumb {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f3f4f6;
+        }
+
+        .bulk-photo-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .bulk-photo-thumb button {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 22px;
+            height: 22px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(0,0,0,.65);
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .bulk-store-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 8px;
+        }
+
+        .bulk-store-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px 12px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .bulk-store-chip input {
+            accent-color: var(--inv-accent);
+        }
+
+        .bulk-store-chip.disconnected {
+            opacity: 0.55;
+            cursor: default;
+        }
+
+        .bulk-store-chip .store-meta {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .bulk-list-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .inv-list-btn {
+            border: 1px solid var(--border-color);
+            background: #fff;
+            color: var(--inv-accent);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .inv-list-btn:hover {
+            background: var(--inv-accent-soft);
+        }
+
+        .inv-listing-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 112px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
         @media (max-width: 900px) {
             .inventory-table-wrap {
                 max-height: none;
@@ -1775,12 +1923,37 @@
         <nav class="app-sidebar" aria-label="Dashboard sections">
             <div class="app-brand">Crosslist</div>
             <button type="button" class="nav-item" data-section="marketplaces" id="nav-marketplaces">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 10h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9Z" stroke="currentColor" stroke-width="2"/>
+                    <path d="M3 10 5.5 4h13L21 10" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    <path d="M10 20v-6h4v6" stroke="currentColor" stroke-width="2"/>
+                </svg>
                 Marketplaces
             </button>
             <button type="button" class="nav-item active" data-section="items" id="nav-items">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="3" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                    <rect x="14" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                    <rect x="3" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                    <rect x="14" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                </svg>
                 Inventory
             </button>
+            <button type="button" class="nav-item" data-section="list" id="nav-list">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M5 7h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M5 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M16 15l3 3 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Bulk listings
+            </button>
             <button type="button" class="nav-item" data-section="import" id="nav-import">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 3v11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
                 Bulk import
             </button>
             <div class="sidebar-user" id="sidebar-user" hidden>
@@ -1797,8 +1970,15 @@
 
         <section id="section-marketplaces" class="dashboard-section" aria-labelledby="nav-marketplaces">
             <div class="section-header">
-                <h1>Marketplaces</h1>
-                <p>Connect eBay, Depop, Etsy, and Poshmark with OAuth (Poshmark uses email and password). Facebook Marketplace connects with the Chrome extension.</p>
+                <h1>
+                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M4 10h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9Z" stroke="currentColor" stroke-width="2"/>
+                        <path d="M3 10 5.5 4h13L21 10" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M10 20v-6h4v6" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    Marketplaces
+                </h1>
+                <p>Official app credentials open each store’s own sign-in page, where Google SSO works. Facebook Marketplace still uses the Chrome extension.</p>
             </div>
             <div id="extension-banner" class="server-banner">
                 Facebook Marketplace uses the <strong>Crosslist Connector</strong> Chrome extension.
@@ -1809,13 +1989,13 @@
             <div class="marketplace-grid">
                 <article class="marketplace-card ebay">
                     <div class="marketplace-card-head">
-                        <h2>eBay</h2>
+                        <h2><span class="mkt-logo ebay" aria-hidden="true"></span>eBay</h2>
                         <div id="ebay-auth" class="auth-badge disconnected">
                             <span class="dot"></span>
                             Not connected
                         </div>
                     </div>
-                    <p>Sign in with eBay OAuth to import active listings. The Chrome extension can connect your browser session instead.</p>
+                    <p>Connect with official eBay OAuth. On eBay’s sign-in page you can Continue with Google. The Chrome extension can use your browser session instead.</p>
                     <div class="card-actions">
                         <button id="ebay-auth-btn" type="button" class="btn btn-primary">
                             Connect eBay →
@@ -1833,7 +2013,7 @@
                 </article>
                 <article class="marketplace-card facebook">
                     <div class="marketplace-card-head">
-                        <h2>Facebook Marketplace</h2>
+                        <h2><span class="mkt-logo facebook" aria-hidden="true">f</span>Facebook Marketplace</h2>
                         <div id="facebook-auth" class="auth-badge disconnected">
                             <span class="dot"></span>
                             Not connected
@@ -1854,13 +2034,13 @@
                 </article>
                 <article class="marketplace-card depop">
                     <div class="marketplace-card-head">
-                        <h2>Depop</h2>
+                        <h2><span class="mkt-logo depop" aria-hidden="true">D</span>Depop</h2>
                         <div id="depop-auth" class="auth-badge disconnected">
                             <span class="dot"></span>
                             Not connected
                         </div>
                     </div>
-                    <p>Sign in with Depop OAuth to import shop listings. The Chrome extension can connect your browser session instead.</p>
+                    <p>Connect with official Depop OAuth. On Depop’s sign-in page you can Continue with Google. The Chrome extension can use your browser session instead.</p>
                     <div class="card-actions">
                         <button id="depop-auth-btn" type="button" class="btn btn-depop">
                             Connect Depop →
@@ -1878,13 +2058,31 @@
                 </article>
                 <article class="marketplace-card poshmark">
                     <div class="marketplace-card-head">
-                        <h2>Poshmark</h2>
+                        <h2><span class="mkt-logo poshmark" aria-hidden="true">P</span>Poshmark</h2>
                         <div id="poshmark-auth" class="auth-badge disconnected">
                             <span class="dot"></span>
                             Not connected
                         </div>
                     </div>
-                    <p>Sign in with your Poshmark email and password. The Chrome extension can connect your browser session instead.</p>
+                    <p>Poshmark has no public OAuth API. Continue with Google uses your Poshmark Google SSO session in Chrome. Email and password still works for password accounts.</p>
+                    <div class="card-actions">
+                        <button id="poshmark-google-btn" type="button" class="btn btn-google">
+                            <svg viewBox="0 0 18 18" aria-hidden="true">
+                                <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+                                <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+                                <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+                                <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"/>
+                            </svg>
+                            Continue with Google
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="startBulkImport('poshmark')">
+                            Import listings
+                        </button>
+                        <button id="poshmark-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
+                            Disconnect
+                        </button>
+                    </div>
+                    <div class="auth-divider">or email and password</div>
                     <form id="poshmark-login-form" class="marketplace-login-form">
                         <label>
                             Email address
@@ -1894,31 +2092,20 @@
                             Password
                             <input id="poshmark-password" type="password" autocomplete="current-password" placeholder="Password">
                         </label>
-                        <div class="card-actions">
-                            <button id="poshmark-auth-btn" type="submit" class="btn btn-poshmark" disabled>
-                                Sign in
-                            </button>
-                            <button type="button" class="btn btn-secondary" onclick="startBulkImport('poshmark')">
-                                Import listings
-                            </button>
-                            <button id="poshmark-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
-                                Disconnect
-                            </button>
-                        </div>
+                        <button id="poshmark-auth-btn" type="submit" class="btn btn-poshmark" disabled>
+                            Sign in
+                        </button>
                     </form>
-                    <button id="poshmark-extension-btn" type="button" class="btn-link">
-                        Or connect with Chrome extension
-                    </button>
                 </article>
                 <article class="marketplace-card etsy">
                     <div class="marketplace-card-head">
-                        <h2>Etsy</h2>
+                        <h2><span class="mkt-logo etsy" aria-hidden="true">E</span>Etsy</h2>
                         <div id="etsy-auth" class="auth-badge disconnected">
                             <span class="dot"></span>
                             Not connected
                         </div>
                     </div>
-                    <p>Sign in with Etsy OAuth to import shop listings. The Chrome extension can connect your browser session instead.</p>
+                    <p>Connect with official Etsy OAuth. On Etsy’s sign-in page you can Continue with Google. The Chrome extension can use your browser session instead.</p>
                     <div class="card-actions">
                         <button id="etsy-auth-btn" type="button" class="btn btn-etsy">
                             Connect Etsy →
@@ -1952,8 +2139,16 @@
                         </span>
                     </div>
                     <div class="inventory-topbar-actions">
-                        <button type="button" class="btn btn-add-item" onclick="openAddItemModal()">+ Add item</button>
-                        <button type="button" class="btn btn-secondary" onclick="showDashboardSection('import')">Bulk import</button>
+                        <button type="button" class="btn btn-add-item" onclick="showDashboardSection('list')">+ Add item</button>
+                        <button type="button" class="btn btn-secondary" onclick="showDashboardSection('list')">Bulk listings</button>
+                        <button type="button" class="btn btn-secondary" onclick="showDashboardSection('import')">
+                            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M12 3v11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                <path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            Bulk import
+                        </button>
                     </div>
                 </div>
 
@@ -2020,6 +2215,7 @@
                     <input type="text" id="bulk-title" placeholder="New title">
                     <input type="number" id="bulk-price" placeholder="Price ($)">
                     <input type="number" id="bulk-quantity" placeholder="Qty">
+                    <button id="bulk-list-btn" class="btn btn-add-item" onclick="pushSelectedToStores()" disabled>List on all stores</button>
                     <button id="bulk-apply-btn" class="btn btn-success" onclick="applyBulkEdit()" disabled>Apply</button>
                     <button id="bulk-reduce-btn" class="btn btn-secondary" onclick="reduceSelectedPrices(10)" disabled>Reduce 10%</button>
                     <button id="bulk-clear-btn" class="btn btn-danger" onclick="clearSelection()" disabled>Clear</button>
@@ -2041,27 +2237,95 @@
                     </table>
                 </div>
             </div>
-            <div id="log" class="inventory-hidden-log"></div>
+        </section>
+
+        <section id="section-list" class="dashboard-section" aria-labelledby="nav-list">
+            <div class="section-header">
+                <h1>
+                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M5 7h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M5 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M16 15l3 3 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Bulk listings
+                </h1>
+                <p>Upload one item into inventory, then push it to every connected store. Demo stores list immediately. Live stores open a prefilled listing form in Chrome so you can review and publish.</p>
+            </div>
+            <div class="bulk-list-layout">
+                <div class="bulk-photo-card">
+                    <div class="form-group">
+                        <label>Photos</label>
+                        <label class="bulk-dropzone" id="bulk-dropzone">
+                            Drop photos here or click to upload
+                            <input id="bulk-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+                        </label>
+                        <div id="bulk-photo-grid" class="bulk-photo-grid"></div>
+                    </div>
+                </div>
+                <div class="bulk-details-card">
+                    <div class="form-group">
+                        <label for="bulk-item-title">Title</label>
+                        <input type="text" id="bulk-item-title" placeholder="Item title">
+                    </div>
+                    <div class="form-group">
+                        <label for="bulk-item-description">Description</label>
+                        <textarea id="bulk-item-description" placeholder="Item description"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="bulk-item-price">Price ($)</label>
+                        <input type="number" id="bulk-item-price" placeholder="0.00" step="0.01" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="bulk-item-quantity">Quantity</label>
+                        <input type="number" id="bulk-item-quantity" placeholder="1" min="0" value="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="bulk-item-condition">Condition</label>
+                        <select id="bulk-item-condition" class="inventory-select">
+                            <option value="new">New</option>
+                            <option value="like_new">Like new</option>
+                            <option value="used_good" selected>Used — good</option>
+                            <option value="used_fair">Used — fair</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Push to stores</label>
+                        <div id="bulk-store-grid" class="bulk-store-grid"></div>
+                    </div>
+                    <div class="bulk-list-actions">
+                        <button type="button" class="btn btn-secondary" onclick="saveBulkListing(false)">Save to inventory</button>
+                        <button type="button" class="btn btn-add-item" onclick="saveBulkListing(true)">List on all stores</button>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <section id="section-import" class="dashboard-section" aria-labelledby="nav-import">
             <div class="section-header">
-                <h1>Bulk import from marketplace</h1>
-                <p>Pull live listings from eBay, Facebook, Depop, Poshmark, or Etsy into one inventory. Matching titles merge onto the same item. If listings share the same photos but have different names, you’ll be asked whether they are the same product.</p>
+                <h1>
+                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 3v11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Bulk import from marketplace
+                </h1>
+                <p>Pull live listings from eBay, Facebook, Depop, Poshmark, or Etsy into one inventory. The same product on multiple marketplaces is merged into one row, even when the titles are worded differently. Close matches are reviewed if they are not certain.</p>
             </div>
             <div class="marketplace-grid">
                 <article class="marketplace-card ebay">
                     <div class="marketplace-card-head">
-                        <h2>eBay</h2>
+                        <h2><span class="mkt-logo ebay" aria-hidden="true"></span>eBay</h2>
                     </div>
-                    <p>Import active listings from your eBay seller inventory. Already imported items are skipped; matching titles are merged. Shared photos with different titles are reviewed after import.</p>
+                    <p>Import active listings from your eBay seller inventory. Already imported items are skipped; the same product on another marketplace is merged into that row. Close matches are reviewed after import.</p>
                     <button type="button" class="btn btn-primary" onclick="startBulkImport('ebay')">
                         Import from eBay
                     </button>
                 </article>
                 <article class="marketplace-card facebook">
                     <div class="marketplace-card-head">
-                        <h2>Facebook Marketplace</h2>
+                        <h2><span class="mkt-logo facebook" aria-hidden="true">f</span>Facebook Marketplace</h2>
                     </div>
                     <p>Import from Marketplace after connecting with the Chrome extension.</p>
                     <button type="button" class="btn btn-facebook" onclick="startBulkImport('facebook')">
@@ -2070,7 +2334,7 @@
                 </article>
                 <article class="marketplace-card depop">
                     <div class="marketplace-card-head">
-                        <h2>Depop</h2>
+                        <h2><span class="mkt-logo depop" aria-hidden="true">D</span>Depop</h2>
                     </div>
                     <p>Import products from your Depop shop after connecting with OAuth.</p>
                     <button type="button" class="btn btn-depop" onclick="startBulkImport('depop')">
@@ -2079,16 +2343,16 @@
                 </article>
                 <article class="marketplace-card poshmark">
                     <div class="marketplace-card-head">
-                        <h2>Poshmark</h2>
+                        <h2><span class="mkt-logo poshmark" aria-hidden="true">P</span>Poshmark</h2>
                     </div>
-                    <p>Import closet listings after signing in with your Poshmark email and password.</p>
+                    <p>Import closet listings after connecting with Google SSO or email and password.</p>
                     <button type="button" class="btn btn-poshmark" onclick="startBulkImport('poshmark')">
                         Import from Poshmark
                     </button>
                 </article>
                 <article class="marketplace-card etsy">
                     <div class="marketplace-card-head">
-                        <h2>Etsy</h2>
+                        <h2><span class="mkt-logo etsy" aria-hidden="true">E</span>Etsy</h2>
                     </div>
                     <p>Import shop listings after connecting with Etsy OAuth.</p>
                     <button type="button" class="btn btn-etsy" onclick="startBulkImport('etsy')">
@@ -2106,7 +2370,7 @@
                 <h2 id="add-item-title">Add item</h2>
                 <button type="button" class="modal-close" onclick="closeAddItemModal()" aria-label="Close">×</button>
             </div>
-            <p class="modal-subtitle">Added once, listed on every connected marketplace.</p>
+            <p class="modal-subtitle">Saves to inventory. Use List on all stores to push it to connected marketplaces.</p>
             <div class="modal-body">
                 <div class="form-group">
                     <label>Title</label>
@@ -2125,6 +2389,10 @@
                     <input type="number" id="new-quantity" placeholder="1" min="0">
                 </div>
                 <div class="form-group">
+                    <label>Photos</label>
+                    <input type="file" id="new-photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+                </div>
+                <div class="form-group">
                     <label>Image URL (optional)</label>
                     <input type="text" id="new-image" placeholder="https://...">
                 </div>
@@ -2133,7 +2401,8 @@
                 <span></span>
                 <div class="section-header-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeAddItemModal()">Cancel</button>
-                    <button type="button" class="btn btn-add-item" onclick="addListing()">Add item</button>
+                    <button type="button" class="btn btn-secondary" onclick="addListing(false)">Save to inventory</button>
+                    <button type="button" class="btn btn-add-item" onclick="addListing(true)">List on all stores</button>
                 </div>
             </div>
         </div>
@@ -2208,7 +2477,7 @@
 
         let currentUser = null;
         let authMode = 'signup';
-        const DASHBOARD_SECTIONS = ['marketplaces', 'items', 'import'];
+        const DASHBOARD_SECTIONS = ['marketplaces', 'items', 'list', 'import'];
         const INVENTORY_PLATFORMS = [
             { id: 'ebay', label: 'eBay', mark: '' },
             { id: 'facebook', label: 'Facebook', mark: 'f' },
@@ -2218,12 +2487,20 @@
         ];
         let inventoryTab = 'listed';
         let lastSyncedAt = null;
+        let bulkListingPhotos = [];
         const IMPORT_COMMANDS = {
             ebay: 'IMPORT_EBAY',
             facebook: 'IMPORT_FACEBOOK',
             depop: 'IMPORT_DEPOP',
             poshmark: 'IMPORT_POSHMARK',
             etsy: 'IMPORT_ETSY',
+        };
+        const PRICE_PUSH_COMMANDS = {
+            ebay: 'APPLY_EBAY_PRICES',
+            facebook: 'APPLY_FACEBOOK_PRICES',
+            depop: 'APPLY_DEPOP_PRICES',
+            poshmark: 'APPLY_POSHMARK_PRICES',
+            etsy: 'APPLY_ETSY_PRICES',
         };
 
         function showDashboardSection(sectionId) {
@@ -2275,7 +2552,10 @@
             if (text) {
                 try {
                     data = JSON.parse(text);
-                } catch {
+                } catch (error) {
+                    log('error', `API response was not JSON: ${error.message}`, {
+                        detail: text.slice(0, 180),
+                    });
                     data = { error: text.slice(0, 180) };
                 }
             }
@@ -2344,8 +2624,11 @@
                 const data = await apiFetch('/api/auth/me', { authGateOn401: false });
                 currentUser = data.user || null;
                 return Boolean(currentUser);
-            } catch (_error) {
+            } catch (error) {
                 currentUser = null;
+                if (error.status !== 401) {
+                    log('error', `Could not load current user: ${error.message}`);
+                }
                 return false;
             }
         }
@@ -2368,16 +2651,23 @@
                 currentUser = data.user;
                 hideAuthGate();
                 renderCurrentUser();
+                log('success', authMode === 'signup' ? `Account created (${email})` : `Signed in as ${email}`);
                 handleOAuthReturnParams();
                 await checkAuthStatus();
                 await loadListings();
             } catch (error) {
                 errorEl.textContent = error.message;
+                log('error', `Authentication failed: ${error.message}`);
             }
         }
 
         async function handleLogout() {
-            await fetch(`${getApiBase()}/api/auth/logout`, { method: 'POST' });
+            try {
+                const response = await fetch(`${getApiBase()}/api/auth/logout`, { method: 'POST' });
+                if (!response.ok) throw new Error(`Logout failed (${response.status})`);
+            } catch (error) {
+                log('error', `Logout failed: ${error.message}`);
+            }
             currentUser = null;
             listings = [];
             selectedIds.clear();
@@ -2391,6 +2681,7 @@
         }
 
         function callExtension(command, payload = {}) {
+            log('info', `Extension command ${command}`, { source: 'extension' });
             return new Promise((resolve, reject) => {
                 if (!hasExtensionBridge()) {
                     reject(new Error('Crosslist Chrome extension not detected'));
@@ -2504,7 +2795,7 @@
             if (oauthError) {
                 const label = platformLabel(oauthError);
                 const message = oauthCredentialMessage(oauthError, label);
-                log('info', message);
+                log('error', message);
                 showToast(message, 'error');
             }
             history.replaceState(null, '', window.location.pathname + window.location.hash);
@@ -2524,7 +2815,7 @@
                 poshmark: 'Poshmark email and password',
             };
             const needed = keys[platform] || `${label} OAuth credentials`;
-            return `OAuth isn’t configured for ${label} yet. Add ${needed} to .env.`;
+            return `OAuth isn’t configured for ${label} yet. Add ${needed} to .env. After that, Connect opens ${label}’s sign-in page, where Google SSO works.`;
         }
 
         function showServerBannerIfNeeded() {
@@ -2566,7 +2857,7 @@
             document.getElementById('etsy-auth-btn').addEventListener('click', () => connectWithOAuth('etsy'));
             document.getElementById('ebay-extension-btn').addEventListener('click', () => connectWithExtension('ebay'));
             document.getElementById('depop-extension-btn').addEventListener('click', () => connectWithExtension('depop'));
-            document.getElementById('poshmark-extension-btn').addEventListener('click', () => connectWithExtension('poshmark'));
+            document.getElementById('poshmark-google-btn').addEventListener('click', () => connectWithExtension('poshmark'));
             document.getElementById('etsy-extension-btn').addEventListener('click', () => connectWithExtension('etsy'));
             document.getElementById('ebay-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('ebay'));
             document.getElementById('facebook-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('facebook'));
@@ -2580,7 +2871,9 @@
             document.getElementById('poshmark-email').addEventListener('input', updatePoshmarkSignInState);
             document.getElementById('poshmark-password').addEventListener('input', updatePoshmarkSignInState);
             await checkAuthStatus();
+            initBulkListingForm();
             await loadListings();
+            log('info', `Signed in as ${currentUser.email}`);
             document.getElementById('import-modal').addEventListener('click', (event) => {
                 if (event.target.id === 'import-modal') closeImportModal();
             });
@@ -2661,7 +2954,7 @@
             const entry = listingPlatformEntry(listing, platform);
             if (entry) {
                 const status = String(entry.status || listing.status || 'active').toLowerCase();
-                if (status === 'pending' || status === 'draft') return false;
+                if (['pending', 'draft', 'listing', 'error'].includes(status)) return false;
                 return Boolean(entry.listingId);
             }
             return listingPlatforms(listing).includes(platform);
@@ -2676,6 +2969,7 @@
 
         function isUsableThumb(url) {
             const value = String(url || '').trim();
+            if (value.startsWith('/uploads/') || value.startsWith('blob:') || value.startsWith('data:image/')) return true;
             if (!/^https?:\/\//i.test(value)) return false;
             return !/placehold\.co|via\.placeholder|placeholder\.com|dummyimage/i.test(value);
         }
@@ -2775,13 +3069,27 @@
         }
 
         function marketplaceCellHtml(listing, platform) {
-            if (!isListedOnPlatform(listing, platform)) {
-                return `<div class="inv-empty-cell" title="Not listed on ${escapeHtml(platformLabel(platform))}">${hangerSvg()}</div>`;
-            }
             const entry = listingPlatformEntry(listing, platform);
+            const status = String(entry?.status || (!isListedOnPlatform(listing, platform) ? 'pending' : listing.status) || 'pending').toLowerCase();
+            if (status === 'listing') {
+                const url = entry?.url || '';
+                return `
+                    <div class="inv-listing-cell">
+                        Review on ${escapeHtml(platformLabel(platform))}
+                        ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}
+                    </div>
+                `;
+            }
+            if (!isListedOnPlatform(listing, platform)) {
+                const connected = Boolean(marketplaceAuth[platform]?.connected);
+                const action = connected
+                    ? `<button type="button" class="inv-list-btn" onclick="pushListingToStores('${listing.id}', ['${platform}'])">List</button>`
+                    : `<button type="button" class="inv-list-btn" onclick="goToMarketplaceConnect('${platform}')">Connect</button>`;
+                return `<div class="inv-empty-cell" title="Not listed on ${escapeHtml(platformLabel(platform))}">${hangerSvg()}</div>
+                    <div style="margin-top:6px">${action}</div>`;
+            }
             const image = platformImage(listing, platform);
             const url = entry?.url || '';
-            const status = String(entry?.status || listing.status || 'active').toLowerCase();
             const tag = status === 'sold' ? 'Sold' : 'Listed';
             const link = url
                 ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open listing">↗</a>`
@@ -2812,10 +3120,8 @@
         }
 
         function openAddItemModal() {
-            const modal = document.getElementById('add-item-modal');
-            modal.hidden = false;
-            modal.classList.add('visible');
-            document.getElementById('new-title')?.focus();
+            showDashboardSection('list');
+            document.getElementById('bulk-item-title')?.focus();
         }
 
         function closeAddItemModal() {
@@ -2824,12 +3130,345 @@
             modal.classList.remove('visible');
         }
 
-        function normalizeImportTitle(title) {
-            return String(title || '')
-                .toLowerCase()
-                .replace(/[^\w\s]/g, '')
+        function connectedStoreIds() {
+            return INVENTORY_PLATFORMS
+                .filter((platform) => marketplaceAuth[platform.id]?.connected)
+                .map((platform) => platform.id);
+        }
+
+        function selectedBulkStores() {
+            return [...document.querySelectorAll('#bulk-store-grid input[type="checkbox"]:checked')].map((input) => input.value);
+        }
+
+        function renderBulkStorePicker() {
+            const grid = document.getElementById('bulk-store-grid');
+            if (!grid) return;
+            const connected = connectedStoreIds();
+            grid.innerHTML = INVENTORY_PLATFORMS.map((platform) => {
+                const isConnected = connected.includes(platform.id);
+                return `
+                    <label class="bulk-store-chip ${isConnected ? '' : 'disconnected'}">
+                        <input type="checkbox" value="${platform.id}" ${isConnected ? 'checked' : 'disabled'}>
+                        ${marketplaceLogoHtml(platform.id)}
+                        <span>
+                            ${escapeHtml(platform.label)}
+                            <div class="store-meta">${isConnected ? 'Connected' : 'Not connected'}</div>
+                        </span>
+                    </label>
+                `;
+            }).join('');
+        }
+
+        function renderBulkPhotos() {
+            const grid = document.getElementById('bulk-photo-grid');
+            if (!grid) return;
+            grid.innerHTML = bulkListingPhotos.map((photo, index) => `
+                <div class="bulk-photo-thumb">
+                    <img src="${escapeHtml(photo.preview)}" alt="">
+                    <button type="button" onclick="removeBulkPhoto(${index})" aria-label="Remove photo">×</button>
+                </div>
+            `).join('');
+        }
+
+        function addBulkPhotos(fileList) {
+            const incoming = [...(fileList || [])].filter((file) => file.type.startsWith('image/'));
+            for (const file of incoming) {
+                if (bulkListingPhotos.length >= 8) break;
+                bulkListingPhotos.push({
+                    file,
+                    preview: URL.createObjectURL(file),
+                });
+            }
+            renderBulkPhotos();
+        }
+
+        function removeBulkPhoto(index) {
+            const [removed] = bulkListingPhotos.splice(index, 1);
+            if (removed?.preview) URL.revokeObjectURL(removed.preview);
+            renderBulkPhotos();
+        }
+
+        function resetBulkListingForm() {
+            document.getElementById('bulk-item-title').value = '';
+            document.getElementById('bulk-item-description').value = '';
+            document.getElementById('bulk-item-price').value = '';
+            document.getElementById('bulk-item-quantity').value = '1';
+            document.getElementById('bulk-item-condition').value = 'used_good';
+            bulkListingPhotos.forEach((photo) => URL.revokeObjectURL(photo.preview));
+            bulkListingPhotos = [];
+            renderBulkPhotos();
+            const input = document.getElementById('bulk-photos');
+            if (input) input.value = '';
+            renderBulkStorePicker();
+        }
+
+        function initBulkListingForm() {
+            const input = document.getElementById('bulk-photos');
+            const dropzone = document.getElementById('bulk-dropzone');
+            if (!input || input.dataset.bound) return;
+            input.dataset.bound = 'true';
+            input.addEventListener('change', () => {
+                addBulkPhotos(input.files);
+                input.value = '';
+            });
+            dropzone.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                dropzone.classList.add('dragover');
+            });
+            dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+            dropzone.addEventListener('drop', (event) => {
+                event.preventDefault();
+                dropzone.classList.remove('dragover');
+                addBulkPhotos(event.dataTransfer?.files);
+            });
+            renderBulkStorePicker();
+        }
+
+        async function uploadListingPhotos(files) {
+            const urls = [];
+            for (const file of files) {
+                const response = await fetch(`${getApiBase()}/api/uploads`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': file.type || 'application/octet-stream',
+                        'X-Filename': encodeURIComponent(file.name || 'photo.jpg'),
+                    },
+                    body: file,
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Photo upload failed');
+                urls.push(data.url);
+            }
+            return urls;
+        }
+
+        async function createInventoryItem({ title, description, price, quantity, images, platforms, condition, sku }) {
+            const data = await apiFetch('/api/listings', {
+                method: 'POST',
+                body: JSON.stringify({ title, description, price, quantity, images, platforms, condition, sku }),
+            });
+            return data;
+        }
+
+        async function runExtensionListingTasks(listing, extensionTasks) {
+            if (!extensionTasks?.length) return [];
+            if (!hasExtensionBridge()) {
+                showExtensionInstallHelp();
+                throw new Error('Install the Crosslist Chrome extension to list on live stores');
+            }
+            const platforms = extensionTasks.map((task) => task.platform);
+            log('info', `Opening listing forms for ${platforms.map(platformLabel).join(', ')}`);
+            showToast('Opening marketplace listing forms…', 'success');
+            const result = await callExtension('CREATE_MARKETPLACE_LISTINGS', {
+                listing: {
+                    ...listing,
+                    ...(extensionTasks[0]?.item || {}),
+                    images: listing.images || [],
+                },
+                platforms,
+                dashboardOrigin: getApiBase(),
+            });
+            ingestExtensionLog(platforms[0], result);
+            const rows = Array.isArray(result?.results) ? result.results : [];
+            if (rows.length) {
+                await apiFetch(`/api/listings/${encodeURIComponent(listing.id)}/listed`, {
+                    method: 'POST',
+                    body: JSON.stringify({ results: rows, source: 'extension' }),
+                });
+            }
+            return rows;
+        }
+
+        async function pushListingToStores(listingId, platforms) {
+            if (showServerBannerIfNeeded()) {
+                showToast('Start the server with npm start', 'error');
+                return null;
+            }
+            if (!listingId) return null;
+            log('info', `Pushing item to ${platforms?.length ? platforms.map(platformLabel).join(', ') : 'all connected stores'}`);
+            try {
+                const data = await apiFetch(`/api/listings/${encodeURIComponent(listingId)}/push`, {
+                    method: 'POST',
+                    body: JSON.stringify({ platforms }),
+                });
+                const extensionRows = await runExtensionListingTasks(data.listing, data.extensionTasks || []);
+                const listed = (data.results || []).filter((row) => row.status === 'active').length
+                    + extensionRows.filter((row) => row.status === 'active').length;
+                const review = (data.extensionTasks || []).length;
+                if (review) {
+                    showToast(`Saved to inventory. Review and publish ${review} store form${review === 1 ? '' : 's'}.`, 'success');
+                } else {
+                    showToast(listed ? `Listed on ${listed} store${listed === 1 ? '' : 's'}` : 'Saved to inventory', 'success');
+                }
+                await loadListings({ skipImageMatches: true });
+                showDashboardSection('items');
+                setInventoryTab(listed ? 'listed' : 'drafts');
+                return data;
+            } catch (error) {
+                if (error.status === 401) return null;
+                log('error', `Could not list item: ${error.message}`);
+                showToast(error.message, 'error');
+                return null;
+            }
+        }
+
+        async function saveBulkListing(push) {
+            const title = document.getElementById('bulk-item-title').value.trim();
+            const description = document.getElementById('bulk-item-description').value;
+            const price = document.getElementById('bulk-item-price').value;
+            const quantity = document.getElementById('bulk-item-quantity').value;
+            const condition = document.getElementById('bulk-item-condition').value;
+            const platforms = selectedBulkStores();
+            if (!title) {
+                showToast('Title is required', 'error');
+                return;
+            }
+            if (showServerBannerIfNeeded()) {
+                showToast('Start the server with npm start', 'error');
+                return;
+            }
+            log('info', push ? 'Saving item and listing on connected stores...' : 'Saving item to inventory...');
+            try {
+                const images = await uploadListingPhotos(bulkListingPhotos.map((photo) => photo.file));
+                const item = await createInventoryItem({
+                    title,
+                    description,
+                    price,
+                    quantity,
+                    images,
+                    platforms,
+                    condition,
+                });
+                log('success', `Saved "${item.title}" to inventory`);
+                if (push) {
+                    await pushListingToStores(item.id, platforms);
+                } else {
+                    showToast('Item saved to inventory', 'success');
+                    resetBulkListingForm();
+                    await loadListings({ skipImageMatches: true });
+                    showDashboardSection('items');
+                    setInventoryTab('drafts');
+                }
+                if (push) resetBulkListingForm();
+            } catch (error) {
+                if (error.status === 401) return;
+                log('error', `Bulk listing failed: ${error.message}`);
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function pushSelectedToStores() {
+            if (!selectedIds.size) {
+                showToast('Select items to list', 'error');
+                return;
+            }
+            const platforms = connectedStoreIds();
+            if (!platforms.length) {
+                showToast('Connect at least one marketplace first', 'error');
+                showDashboardSection('marketplaces');
+                return;
+            }
+            for (const id of Array.from(selectedIds)) {
+                try {
+                    await pushListingToStores(id, platforms);
+                } catch (error) {
+                    log('error', `Could not list ${id}: ${error.message}`);
+                    showToast(error.message, 'error');
+                }
+            }
+        }
+
+        const TITLE_STOPWORDS = new Set([
+            'the','a','an','and','or','for','with','from','this','that','very','gently',
+            'official','officially','licensed','merch','show','used','new','nwt','nwot',
+            'size','sz','mens','men','womens','women','man','woman','unisex',
+            'in','on','of','to','by','at','as','is','it','its','into',
+            'condition','good','great','excellent','perfect','like',
+            'please','read','description','shipping','free','album','panel','mint','heavily','worn',
+        ]);
+        const TITLE_SIZE_WORDS = new Set(['xs','s','m','l','xl','xxl','xxxl','2xl','3xl','small','medium','large']);
+
+        function collapseRepeatedTitle(title) {
+            let text = String(title || '')
+                .replace(/\boffer expired\b/gi, ' ')
+                .replace(/\bnew notification\b/gi, ' ')
+                .replace(/notification.*$/gi, ' ')
+                .replace(/\breach more buyers\b/gi, ' ')
+                .replace(/\bbuy it now\b/gi, ' ')
                 .replace(/\s+/g, ' ')
                 .trim();
+            if (text.length < 24) return text;
+            const lower = text.toLowerCase();
+            const start = lower.slice(0, Math.min(24, Math.floor(text.length / 2)));
+            let idx = lower.indexOf(start, 12);
+            while (idx !== -1) {
+                const left = text.slice(0, idx).replace(/[\s\-|:–—]+$/g, '');
+                const right = text.slice(idx);
+                const leftN = left.toLowerCase();
+                const rightN = right.toLowerCase();
+                let same = 0;
+                const check = Math.min(leftN.length, rightN.length);
+                while (same < check && leftN[same] === rightN[same]) same += 1;
+                if (left.length >= 16 && same >= Math.min(16, Math.floor(leftN.length * 0.6))) {
+                    return left.trim();
+                }
+                idx = lower.indexOf(start, idx + 1);
+            }
+            return text;
+        }
+
+        function normalizeImportTitle(title) {
+            return collapseRepeatedTitle(title)
+                .toLowerCase()
+                .replace(/&/g, '')
+                .replace(/\bgrey\b/g, 'gray')
+                .replace(/\bcolour\b/g, 'color')
+                .replace(/[^\w\s]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function titleTokens(title) {
+            const tokens = new Set();
+            for (const token of normalizeImportTitle(title).split(' ')) {
+                if (!token || token.length < 2) continue;
+                if (TITLE_STOPWORDS.has(token) || TITLE_SIZE_WORDS.has(token)) continue;
+                tokens.add(token);
+            }
+            return tokens;
+        }
+
+        function titleSimilarity(a, b) {
+            const left = titleTokens(a);
+            const right = titleTokens(b);
+            if (!left.size || !right.size) return { shared: 0, jaccard: 0, containment: 0 };
+            let shared = 0;
+            for (const token of left) {
+                if (right.has(token)) shared += 1;
+            }
+            return {
+                shared,
+                jaccard: shared / (left.size + right.size - shared),
+                containment: shared / Math.min(left.size, right.size),
+            };
+        }
+
+        function titlesAreSameProduct(a, b) {
+            const left = normalizeImportTitle(a);
+            const right = normalizeImportTitle(b);
+            if (left && left === right) return true;
+            const { shared, jaccard, containment } = titleSimilarity(a, b);
+            if (shared >= 5 && containment >= 0.7) return true;
+            if (shared >= 4 && containment >= 0.7 && jaccard >= 0.45) return true;
+            if (shared >= 6 && containment >= 0.5) return true;
+            return false;
+        }
+
+        function titlesLookRelated(a, b) {
+            if (titlesAreSameProduct(a, b)) return true;
+            const { shared, jaccard, containment } = titleSimilarity(a, b);
+            return shared >= 3 && (containment >= 0.42 || jaccard >= 0.24);
         }
 
         function importCandidateKey(listing) {
@@ -2839,7 +3478,6 @@
         function annotateImportCandidatesLocal(platform, candidates) {
             return (candidates || []).map((candidate) => {
                 const incoming = { ...candidate, platform: candidate.platform || platform };
-                const titleKey = normalizeImportTitle(incoming.title);
                 const incomingKeys = listingImageKeys(incoming);
                 const match = inventoryList().find((listing) => {
                     const platforms = listing.platforms || {};
@@ -2847,12 +3485,16 @@
                     if (incoming.platformListingId && platformId && String(platformId) === String(incoming.platformListingId)) {
                         return true;
                     }
-                    return titleKey && normalizeImportTitle(listing.title) === titleKey;
+                    if (normalizeImportTitle(incoming.title) && normalizeImportTitle(listing.title) === normalizeImportTitle(incoming.title)) {
+                        return true;
+                    }
+                    return !listingPlatforms(listing).includes(platform) && titlesAreSameProduct(incoming.title, listing.title);
                 });
                 const imageMatch = match ? null : inventoryList().find((listing) => {
                     if (listingPlatforms(listing).includes(platform)) return false;
-                    if (titleKey && normalizeImportTitle(listing.title) === titleKey) return false;
-                    return listingsShareImageKeys(incomingKeys, listingImageKeys(listing));
+                    if (titlesAreSameProduct(incoming.title, listing.title)) return false;
+                    return titlesLookRelated(incoming.title, listing.title)
+                        || listingsShareImageKeys(incomingKeys, listingImageKeys(listing));
                 });
                 return {
                     ...incoming,
@@ -2868,7 +3510,11 @@
 
         function listingImageKeys(listing) {
             const keys = new Set();
-            for (const image of listing?.images || []) {
+            const images = [...(listing?.images || [])];
+            for (const entry of Object.values(listing?.platforms || {})) {
+                if (Array.isArray(entry?.images)) images.push(...entry.images);
+            }
+            for (const image of images) {
                 const url = String(image || '').trim();
                 if (!url) continue;
                 const normalized = normalizeImageUrl(url);
@@ -2959,7 +3605,7 @@
                 }
             } catch (error) {
                 if (error.status === 401) return;
-                console.warn('Could not load image matches', error);
+                log('error', `Could not load image matches: ${error.message}`);
             }
         }
 
@@ -3075,6 +3721,7 @@
                 }
             } catch (error) {
                 if (error.status === 401) return;
+                log('error', `Could not save match decision: ${error.message}`);
                 showToast(error.message || 'Could not save match decision', 'error');
             }
         }
@@ -3167,7 +3814,10 @@
             }
 
             if (!candidates.length) {
-                body.innerHTML = `<div class="empty-state"><p>No ${label} listings found. Open your selling page and try again.</p></div>`;
+                const hint = platform === 'facebook'
+                    ? ' If the Facebook tab shows your items, reload the Crosslist Connector extension on chrome://extensions, then import again.'
+                    : '';
+                body.innerHTML = `<div class="empty-state"><p>No ${label} listings found. Open your selling page and try again.${hint}</p></div>`;
                 confirmBtn.disabled = true;
                 document.getElementById('import-selected-count').textContent = '0 selected';
                 return;
@@ -3295,6 +3945,7 @@
                         );
                     }
                     const result = await callExtension(IMPORT_COMMANDS[platform]);
+                    ingestExtensionLog(platform, result);
                     if (result.needsLogin) {
                         renderImportModal('error', result.message || `Sign in to ${platformLabel(platform)}, then try again.`);
                         return;
@@ -3371,33 +4022,80 @@
             }
         }
 
-        function facebookPushListings(items) {
+        function isPushableListingId(platform, listingId) {
+            const id = String(listingId || '').trim();
+            if (!id || /^(demo_|local_|item_)/i.test(id)) return false;
+            if (['facebook', 'ebay', 'etsy'].includes(platform) && !/^\d{6,}$/.test(id)) return false;
+            return true;
+        }
+
+        function platformPushListings(items, platform) {
             return (items || []).map((listing) => {
-                const fb = listing.platforms?.facebook;
-                const listingId = fb?.listingId || (listing.platform === 'facebook' ? listing.platformListingId : null);
-                if (!listingId) return null;
-                return { id: listing.id, price: listing.price, platformListingId: listingId };
+                const entry = listing.platforms?.[platform];
+                const listingId =
+                    entry?.listingId ||
+                    (listing.platform === platform ? listing.platformListingId : null);
+                if (!isPushableListingId(platform, listingId)) return null;
+                return {
+                    id: listing.id,
+                    price: listing.price,
+                    platformListingId: listingId,
+                    url: entry?.url || listing.url || null,
+                };
             }).filter(Boolean);
         }
 
         async function pushMarketplaceUpdates(items, { priceChanged = false } = {}) {
-            const fbListings = facebookPushListings(items);
-            if (!priceChanged || !fbListings.length) return;
-            if (marketplaceAuth.facebook?.mode !== 'extension') return;
+            if (!priceChanged || !items?.length) return;
+
+            const extensionPlatforms = INVENTORY_PLATFORMS.map((platform) => platform.id).filter(
+                (platform) => marketplaceAuth[platform]?.mode === 'extension'
+            );
+            if (!extensionPlatforms.length) return;
+
+            const jobs = extensionPlatforms
+                .map((platform) => ({ platform, listings: platformPushListings(items, platform) }))
+                .filter((job) => job.listings.length);
+            if (!jobs.length) {
+                showToast('Saved in dashboard. No live store listings to update.', 'error');
+                return;
+            }
+
             if (!hasExtensionBridge()) {
-                showToast('Saved in dashboard. Reconnect the Chrome extension to push Facebook prices.', 'error');
+                showToast('Saved in dashboard. Reconnect the Chrome extension to push prices to stores.', 'error');
                 showExtensionInstallHelp();
                 return;
             }
-            showToast('Pushing price updates to marketplaces...', 'success');
-            const pushResult = await callExtension('APPLY_FACEBOOK_PRICES', { listings: fbListings });
-            log(
-                'success',
-                `Marketplace push: ${pushResult.successCount} succeeded, ${pushResult.failCount} failed`
-            );
+
+            let successCount = 0;
+            let failCount = 0;
+            for (const job of jobs) {
+                showToast(
+                    `Pushing ${job.listings.length} price update${job.listings.length === 1 ? '' : 's'} to ${platformLabel(job.platform)}...`,
+                    'success'
+                );
+                try {
+                    const pushResult = await callExtension(PRICE_PUSH_COMMANDS[job.platform], {
+                        listings: job.listings,
+                    });
+                    if (pushResult?.error) throw new Error(pushResult.error);
+                    ingestExtensionLog(job.platform, pushResult);
+                    successCount += Number(pushResult.successCount) || 0;
+                    failCount += Number(pushResult.failCount) || 0;
+                    log(
+                        pushResult.failCount ? 'error' : 'success',
+                        `${platformLabel(job.platform)} price push: ${pushResult.successCount || 0} ok, ${pushResult.failCount || 0} failed`,
+                        { detail: pushResult.results || null }
+                    );
+                } catch (error) {
+                    failCount += job.listings.length;
+                    log('error', `${platformLabel(job.platform)} price push failed: ${error.message}`);
+                }
+            }
+
             showToast(
-                `Updated on marketplaces: ${pushResult.successCount} ok, ${pushResult.failCount} failed`,
-                pushResult.failCount ? 'error' : 'success'
+                `Updated on marketplaces: ${successCount} ok, ${failCount} failed`,
+                failCount ? 'error' : 'success'
             );
         }
 
@@ -3461,7 +4159,9 @@
                 poshmark: 'CONNECT_POSHMARK',
                 etsy: 'CONNECT_ETSY',
             };
-            log('info', `Connecting ${platformLabel(platform)} via Chrome extension...`);
+            log('info', platform === 'poshmark'
+                ? 'Connecting Poshmark with Google SSO...'
+                : `Connecting ${platformLabel(platform)} via Chrome extension...`);
             try {
                 if (!hasExtensionBridge()) {
                     showExtensionInstallHelp();
@@ -3469,12 +4169,10 @@
                 }
 
                 const extensionResult = await callExtension(commands[platform]);
+                ingestExtensionLog(platform, extensionResult);
                 if (extensionResult.needsLogin) {
                     showToast(extensionResult.message, 'error');
                     log('info', extensionResult.message);
-                    if (extensionResult.debug) {
-                        log('info', `${platformLabel(platform)} page: ${extensionResult.debug.pageState} @ ${extensionResult.debug.url}`);
-                    }
                     return;
                 }
                 if (!extensionResult.connected) {
@@ -3568,6 +4266,7 @@
                 updateAuthBadge('depop', false);
                 updateAuthBadge('poshmark', false);
                 updateAuthBadge('etsy', false);
+                renderBulkStorePicker();
                 return;
             }
             try {
@@ -3592,9 +4291,10 @@
                 updateAuthBadge('poshmark', false);
                 updateAuthBadge('etsy', false);
                 if (error.status !== 401) {
-                    log('error', 'Auth status unavailable. Is the server running?');
+                    log('error', `Auth status unavailable: ${error.message}`);
                 }
             }
+            renderBulkStorePicker();
         }
 
         function updateAuthBadge(platform, connected, mode = 'demo') {
@@ -3610,6 +4310,7 @@
             };
             const label = labels[platform] || platform;
             const extensionBtn = document.getElementById(`${platform}-extension-btn`);
+            const googleBtn = document.getElementById(`${platform}-google-btn`);
             const emailInput = document.getElementById(`${platform}-email`);
             const passwordInput = document.getElementById(`${platform}-password`);
 
@@ -3618,12 +4319,16 @@
                 badge.innerHTML = '<span class="dot"></span> Connected';
                 if (mode === 'live') btn.textContent = 'Connected (OAuth) ✓';
                 else if (mode === 'password') btn.textContent = 'Connected (password) ✓';
-                else if (mode === 'extension') btn.textContent = 'Connected (extension) ✓';
+                else if (mode === 'extension') btn.textContent = platform === 'poshmark' ? 'Connected (Google) ✓' : 'Connected (extension) ✓';
                 else if (mode === 'demo') btn.textContent = 'Connected (demo) ✓';
                 else btn.textContent = 'Connected ✓';
                 btn.disabled = true;
                 if (disconnectBtn) disconnectBtn.hidden = false;
                 if (extensionBtn) extensionBtn.hidden = true;
+                if (googleBtn) {
+                    googleBtn.hidden = true;
+                    googleBtn.disabled = true;
+                }
                 if (emailInput) emailInput.disabled = true;
                 if (passwordInput) {
                     passwordInput.disabled = true;
@@ -3640,6 +4345,10 @@
                 btn.disabled = false;
                 if (disconnectBtn) disconnectBtn.hidden = true;
                 if (extensionBtn) extensionBtn.hidden = false;
+                if (googleBtn) {
+                    googleBtn.hidden = false;
+                    googleBtn.disabled = false;
+                }
                 if (emailInput) emailInput.disabled = false;
                 if (passwordInput) passwordInput.disabled = false;
                 if (platform === 'poshmark') updatePoshmarkSignInState();
@@ -3724,7 +4433,7 @@
                             <div class="inventory-empty">
                                 <div class="empty-state-icon">📦</div>
                                 <p>No items yet</p>
-                                <p style="font-size: 12px; margin-top: 5px;">Add an item, or bulk import listings from a connected marketplace</p>
+                                <p style="font-size: 12px; margin-top: 5px;">Create a bulk listing, or import from a connected marketplace</p>
                             </div>
                         </td>
                     </tr>
@@ -3757,6 +4466,7 @@
                                 <details class="inv-more">
                                     <summary aria-label="Item actions">⋮</summary>
                                     <div class="inv-more-menu">
+                                        <button type="button" onclick="pushListingToStores('${listing.id}')">List on all stores</button>
                                         <button type="button" onclick="editListing('${listing.id}')">Edit</button>
                                         <button type="button" onclick="deleteListing('${listing.id}')">Delete</button>
                                     </div>
@@ -3814,8 +4524,9 @@
             const enabled = count > 0;
             document.getElementById('selected-count').textContent = `${count} selected`;
             bulkActions.classList.toggle('visible', enabled);
-            ['bulk-apply-btn', 'bulk-reduce-btn', 'bulk-clear-btn'].forEach((id) => {
-                document.getElementById(id).disabled = !enabled;
+            ['bulk-apply-btn', 'bulk-reduce-btn', 'bulk-clear-btn', 'bulk-list-btn'].forEach((id) => {
+                const button = document.getElementById(id);
+                if (button) button.disabled = !enabled;
             });
         }
 
@@ -3856,8 +4567,8 @@
                 const failCount = data.results.filter(r => !r.success).length;
 
                 if (successCount > 0) {
-                    log('success', `Updated ${successCount} items successfully`);
-                    showToast(`Updated ${successCount} items on all marketplaces`, 'success');
+                    log('success', `Updated ${successCount} items in inventory`);
+                    showToast(`Saved ${successCount} item${successCount === 1 ? '' : 's'} in inventory`, 'success');
                 }
                 if (failCount > 0) {
                     log('error', `Failed to update ${failCount} items`);
@@ -3900,8 +4611,8 @@
 
                 if (response.ok) {
                     const updated = await response.json();
-                    log('success', `Updated item on all marketplaces: ${newTitle}`);
-                    showToast('Item updated on all marketplaces', 'success');
+                    log('success', `Updated item in inventory: ${newTitle}`);
+                    showToast('Item saved in inventory', 'success');
                     if (parseFloat(newPrice) !== parseFloat(listing.price)) {
                         await pushMarketplaceUpdates([updated], { priceChanged: true });
                     }
@@ -3910,7 +4621,7 @@
                     throw new Error('Update failed');
                 }
             } catch (error) {
-                log('error', 'Failed to update listing');
+                log('error', `Failed to update listing: ${error.message}`);
                 showToast('Failed to update listing', 'error');
             }
         }
@@ -3931,53 +4642,56 @@
                     throw new Error('Delete failed');
                 }
             } catch (error) {
-                log('error', 'Failed to delete listing');
+                log('error', `Failed to delete listing: ${error.message}`);
                 showToast('Failed to delete listing', 'error');
             }
         }
 
         // Add new listing
-        async function addListing() {
-            const title = document.getElementById('new-title').value;
+        async function addListing(push = false) {
+            const title = document.getElementById('new-title').value.trim();
             const description = document.getElementById('new-description').value;
             const price = document.getElementById('new-price').value;
             const quantity = document.getElementById('new-quantity').value;
-            const image = document.getElementById('new-image').value;
+            const image = document.getElementById('new-image').value.trim();
+            const files = [...(document.getElementById('new-photos')?.files || [])];
 
             if (!title) {
                 showToast('Title is required', 'error');
                 return;
             }
+            if (showServerBannerIfNeeded()) {
+                showToast('Start the server with npm start', 'error');
+                return;
+            }
 
-            log('info', 'Adding item to managed inventory...');
+            log('info', push ? 'Adding item and listing on connected stores...' : 'Adding item to inventory...');
 
             try {
-                const response = await fetch(`${getApiBase()}/api/listings`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title, description, price, quantity, images: image ? [image] : [] })
-                });
-
-                if (response.ok) {
-                    log('success', 'Item added to managed inventory');
-                    showToast('Item added for all marketplaces', 'success');
-                    closeAddItemModal();
-                    
-                    // Clear form
-                    document.getElementById('new-title').value = '';
-                    document.getElementById('new-description').value = '';
-                    document.getElementById('new-price').value = '';
-                    document.getElementById('new-quantity').value = '';
-                    document.getElementById('new-image').value = '';
-                    
-                    loadListings();
+                const uploaded = await uploadListingPhotos(files);
+                const images = [...uploaded, ...(image ? [image] : [])];
+                const item = await createInventoryItem({ title, description, price, quantity, images });
+                log('success', `Saved "${item.title}" to inventory`);
+                closeAddItemModal();
+                document.getElementById('new-title').value = '';
+                document.getElementById('new-description').value = '';
+                document.getElementById('new-price').value = '';
+                document.getElementById('new-quantity').value = '';
+                document.getElementById('new-image').value = '';
+                const photos = document.getElementById('new-photos');
+                if (photos) photos.value = '';
+                if (push) {
+                    await pushListingToStores(item.id);
                 } else {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to add listing');
+                    showToast('Item saved to inventory', 'success');
+                    await loadListings({ skipImageMatches: true });
+                    showDashboardSection('items');
+                    setInventoryTab('drafts');
                 }
             } catch (error) {
+                if (error.status === 401) return;
                 log('error', 'Failed to add listing: ' + error.message);
-                showToast('Failed to add listing', 'error');
+                showToast(error.message || 'Failed to add listing', 'error');
             }
         }
 
@@ -3988,20 +4702,30 @@
             return div.innerHTML;
         }
 
-        function log(type, message) {
-            const logDiv = document.getElementById('log');
-            if (!logDiv) return;
-            const entry = document.createElement('div');
-            entry.className = `log-entry ${type}`;
-            const timestamp = new Date().toLocaleTimeString();
-            entry.textContent = `[${timestamp}] ${message}`;
-            logDiv.appendChild(entry);
-            logDiv.scrollTop = logDiv.scrollHeight;
-            
-            // Keep only last 50 entries
-            while (logDiv.children.length > 50) {
-                logDiv.removeChild(logDiv.firstChild);
+        function ingestExtensionLog(platform, result) {
+            const label = platformLabel(platform);
+            const steps = Array.isArray(result?.log) ? result.log : [];
+            if (steps.length) {
+                for (const step of steps) {
+                    const type = /fail|error|could not|timed out|denied|exception/i.test(step.message || '')
+                        ? 'error'
+                        : 'info';
+                    log(type, `${label} extension: ${step.message}`, {
+                        source: 'extension',
+                        detail: step.extra || null,
+                    });
+                }
+                return;
             }
+            if (result?.debug) {
+                log('info', `${label} extension debug`, { source: 'extension', detail: result.debug });
+            }
+        }
+
+        function log(type, message, options = {}) {
+            const detail = options.detail ?? '';
+            if (type === 'error') console.error(message, detail);
+            else console.info(message, detail);
         }
 
         function showToast(message, type) {
@@ -4013,6 +4737,37 @@
                 toast.classList.remove('show');
             }, 3000);
         }
+
+        let handlingGlobalError = false;
+        window.addEventListener('error', (event) => {
+            if (handlingGlobalError) return;
+            handlingGlobalError = true;
+            try {
+                log('error', event.message || 'Unhandled error', {
+                    source: 'window',
+                    detail: {
+                        filename: event.filename,
+                        lineno: event.lineno,
+                        colno: event.colno,
+                    },
+                });
+            } finally {
+                handlingGlobalError = false;
+            }
+        });
+        window.addEventListener('unhandledrejection', (event) => {
+            if (handlingGlobalError) return;
+            handlingGlobalError = true;
+            try {
+                const reason = event.reason;
+                log('error', reason?.message || String(reason || 'Unhandled promise rejection'), {
+                    source: 'promise',
+                    detail: reason?.stack || null,
+                });
+            } finally {
+                handlingGlobalError = false;
+            }
+        });
     </script>
 </body>
 </html>

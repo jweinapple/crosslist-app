@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -5,7 +6,12 @@ import { fileURLToPath } from 'url';
 import { DatabaseSync } from 'node:sqlite';
 import { v4 as uuidv4 } from 'uuid';
 
-const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
+const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : process.env.VERCEL
+    ? path.join('/tmp', 'crosslist-data')
+    : path.join(ROOT_DIR, 'data');
 const DB_PATH = path.join(DATA_DIR, 'crosslist.db');
 const STORE_FILE = path.join(DATA_DIR, 'store.json');
 
@@ -83,6 +89,19 @@ db.exec(`
     PRIMARY KEY (user_id, pair_key),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS activity_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    message TEXT NOT NULL,
+    detail_json TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_activity_user_created ON activity_logs(user_id, created_at);
 `);
 
 function tableHasColumn(table, column) {
@@ -131,15 +150,23 @@ export function parseCookies(req) {
   return out;
 }
 
+function cookieSecurity() {
+  const secure =
+    process.env.VERCEL === '1' ||
+    process.env.NODE_ENV === 'production' ||
+    String(process.env.BASE_URL || '').startsWith('https://');
+  return `Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}
+
 export function setSessionCookie(res, sessionId) {
   res.append(
     'Set-Cookie',
-    `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_MS / 1000)}`
+    `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; ${cookieSecurity()}; Max-Age=${Math.floor(SESSION_MS / 1000)}`
   );
 }
 
 export function clearSessionCookie(res) {
-  res.append('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  res.append('Set-Cookie', `${SESSION_COOKIE}=; ${cookieSecurity()}; Max-Age=0`);
 }
 
 function publicUser(row) {
@@ -312,8 +339,8 @@ export function loadListings(userId) {
     try {
       const listing = JSON.parse(row.data_json);
       if (listing?.id) map.set(listing.id, listing);
-    } catch {
-      // Skip corrupt rows.
+    } catch (error) {
+      console.warn('Skipping corrupt listing row', row.id, error.message);
     }
   }
   return map;
@@ -539,6 +566,83 @@ export function consumeOAuthState(state) {
     platform: row.platform,
     extra: row.extra_json ? JSON.parse(row.extra_json) : {},
   };
+}
+
+const ACTIVITY_LIMIT = 500;
+
+function serializeActivityDetail(detail) {
+  if (detail == null || detail === '') return null;
+  try {
+    return JSON.stringify(detail);
+  } catch (error) {
+    console.warn('Could not serialize activity detail:', error.message);
+    return JSON.stringify(String(detail));
+  }
+}
+
+export function appendActivity(userId, entry = {}) {
+  if (!userId || !entry.message) return null;
+  const row = {
+    id: entry.id || uuidv4(),
+    user_id: userId,
+    created_at: entry.at || nowIso(),
+    type: ['success', 'error', 'info'].includes(entry.type) ? entry.type : 'info',
+    source: String(entry.source || 'app').slice(0, 40),
+    message: String(entry.message).slice(0, 2000),
+    detail_json: serializeActivityDetail(entry.detail),
+  };
+  db.prepare(`
+    INSERT OR REPLACE INTO activity_logs (id, user_id, created_at, type, source, message, detail_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(row.id, row.user_id, row.created_at, row.type, row.source, row.message, row.detail_json);
+
+  const count = db.prepare('SELECT COUNT(*) AS n FROM activity_logs WHERE user_id = ?').get(userId)?.n || 0;
+  if (count > ACTIVITY_LIMIT) {
+    db.prepare(`
+      DELETE FROM activity_logs
+      WHERE id IN (
+        SELECT id FROM activity_logs
+        WHERE user_id = ?
+        ORDER BY created_at ASC
+        LIMIT ?
+      )
+    `).run(userId, count - ACTIVITY_LIMIT);
+  }
+  return row.id;
+}
+
+export function listActivity(userId, limit = 400) {
+  if (!userId) return [];
+  const rows = db.prepare(`
+    SELECT id, created_at, type, source, message, detail_json
+    FROM activity_logs
+    WHERE user_id = ?
+    ORDER BY created_at ASC
+    LIMIT ?
+  `).all(userId, Math.min(Math.max(Number(limit) || 400, 1), ACTIVITY_LIMIT));
+  return rows.map((row) => {
+    let detail = null;
+    if (row.detail_json) {
+      try {
+        detail = JSON.parse(row.detail_json);
+      } catch {
+        detail = row.detail_json;
+      }
+    }
+    return {
+      id: row.id,
+      at: row.created_at,
+      type: row.type,
+      source: row.source,
+      message: row.message,
+      detail,
+    };
+  });
+}
+
+export function clearActivity(userId) {
+  if (!userId) return;
+  db.prepare('DELETE FROM activity_logs WHERE user_id = ?').run(userId);
 }
 
 function claimLegacyStore(userId) {

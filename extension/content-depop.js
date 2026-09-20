@@ -8,7 +8,7 @@ function getDepopPageState() {
   if (path.includes('/login') && !isDepopLoggedIn()) {
     return 'login';
   }
-  if (path.includes('/products/') || path.includes('/selling') || path.includes('/products/create')) {
+  if (path.includes('/sellinghub') || path.includes('/products/') || path.includes('/products/create')) {
     return 'selling';
   }
   if (path === '/') {
@@ -132,6 +132,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       listings: scrapeDepopListings(),
       pageState: getDepopPageState(),
       url: window.location.href,
+      loggedIn: isDepopLoggedIn(),
     });
   })();
 

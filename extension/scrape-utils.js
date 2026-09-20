@@ -96,13 +96,38 @@
     return amount;
   }
 
-  function cleanTitle(text) {
-    return String(text || '')
+  function collapseRepeatedTitle(text) {
+    let title = String(text || '')
       .replace(/OFFER EXPIRED/gi, ' ')
       .replace(/New notification/gi, ' ')
+      .replace(/notification.*$/gi, ' ')
+      .replace(/\breach more buyers\b/gi, ' ')
+      .replace(/\bbuy it now\b/gi, ' ')
       .replace(/\b(Sell now|Mark as sold|Promote listing|Share listing)\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+    if (title.length < 24) return title;
+    const lower = title.toLowerCase();
+    const start = lower.slice(0, Math.min(24, Math.floor(title.length / 2)));
+    let idx = lower.indexOf(start, 12);
+    while (idx !== -1) {
+      const left = title.slice(0, idx).replace(/[\s\-|:–—]+$/g, '');
+      const right = title.slice(idx);
+      const leftN = left.toLowerCase();
+      const rightN = right.toLowerCase();
+      let same = 0;
+      const check = Math.min(leftN.length, rightN.length);
+      while (same < check && leftN[same] === rightN[same]) same += 1;
+      if (left.length >= 16 && same >= Math.min(16, Math.floor(leftN.length * 0.6))) {
+        return left.trim();
+      }
+      idx = lower.indexOf(start, idx + 1);
+    }
+    return title;
+  }
+
+  function cleanTitle(text) {
+    return collapseRepeatedTitle(text);
   }
 
   function isJunkTitle(text) {
@@ -310,16 +335,16 @@
     return match ? parseInt(match[1], 10) : 1;
   }
 
-  function walkJson(node, visit, seen = new Set(), depth = 0) {
-    if (!node || depth > 14 || seen.has(node)) return;
+  function walkJson(node, visit, seen = new Set(), depth = 0, maxDepth = 14) {
+    if (!node || depth > maxDepth || seen.has(node)) return;
     if (typeof node !== 'object') return;
     seen.add(node);
     visit(node);
     const values = Array.isArray(node) ? node : Object.values(node);
-    for (const value of values) walkJson(value, visit, seen, depth + 1);
+    for (const value of values) walkJson(value, visit, seen, depth + 1, maxDepth);
   }
 
-  function listingsFromEmbeddedJson(matcher) {
+  function listingsFromEmbeddedJson(matcher, { maxDepth = 14, scriptFilter } = {}) {
     const listings = [];
     const seen = new Set();
     const scripts = document.querySelectorAll(
@@ -328,14 +353,21 @@
     for (const script of scripts) {
       const text = script.textContent || '';
       if (text.length < 20 || text.length > 6_000_000) continue;
+      if (scriptFilter && !scriptFilter(text)) continue;
       try {
-        walkJson(JSON.parse(text), (obj) => {
-          const listing = matcher(obj);
-          const key = listing?.platformListingId || listing?.id;
-          if (!listing || !key || seen.has(key)) return;
-          seen.add(key);
-          listings.push(listing);
-        });
+        walkJson(
+          JSON.parse(text),
+          (obj) => {
+            const listing = matcher(obj);
+            const key = listing?.platformListingId || listing?.id;
+            if (!listing || !key || seen.has(key)) return;
+            seen.add(key);
+            listings.push(listing);
+          },
+          new Set(),
+          0,
+          maxDepth
+        );
       } catch (_error) {
         // Ignore invalid JSON blobs.
       }

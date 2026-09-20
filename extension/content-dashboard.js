@@ -14,6 +14,7 @@ window.addEventListener('message', (event) => {
     },
     (response) => {
       const error = chrome.runtime.lastError;
+      if (error) console.error('[crosslist dashboard bridge]', error.message);
       window.postMessage(
         {
           type: 'CROSSLIST_EXT_RESPONSE',

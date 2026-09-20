@@ -1,26 +1,105 @@
+function isEbaySignInPage() {
+  const host = window.location.hostname;
+  const path = window.location.pathname;
+  return /signin\.ebay\./i.test(host) || /\/signin/i.test(path);
+}
+
+function usernameFromHref(href) {
+  const match = String(href || '').match(/\/usr\/([^/?#]+)/i);
+  if (!match?.[1] || match[1] === 'default') return '';
+  try {
+    return decodeURIComponent(match[1]).trim();
+  } catch (_error) {
+    return match[1].trim();
+  }
+}
+
+function getEbayAccount() {
+  const headerLinks = document.querySelectorAll(
+    '#gh-ug a[href*="/usr/"], #gh-eb-u a[href*="/usr/"], header a[href*="/usr/"], [data-testid*="account" i] a[href*="/usr/"]'
+  );
+  for (const link of headerLinks) {
+    const username = usernameFromHref(link.getAttribute('href') || link.href);
+    if (username) return username;
+  }
+
+  if (/^\/usr\//i.test(window.location.pathname)) {
+    const username = usernameFromHref(window.location.pathname);
+    if (username) return username;
+  }
+
+  const greeting = document.querySelector('#gh-ug, [data-testid*="account" i]');
+  const hiMatch = String(greeting?.textContent || '').match(/Hi[, ]+(.+)/i);
+  if (hiMatch?.[1]) {
+    return hiMatch[1].replace(/[▼▾].*$/g, '').trim();
+  }
+
+  return '';
+}
+
+function isEbayLoggedIn() {
+  if (isEbaySignInPage()) return false;
+
+  const headerSignIn = [...document.querySelectorAll('#gh-ug a, header a[href*="signin"]')].find(
+    (link) => /sign\s*in/i.test(link.textContent || '')
+  );
+  if (headerSignIn) return false;
+
+  const headerUser = document.querySelectorAll(
+    '#gh-ug a[href*="/usr/"], #gh-eb-u a[href*="/usr/"], header a[href*="/usr/"], [data-testid*="account" i] a[href*="/usr/"]'
+  );
+  if ([...headerUser].some((link) => usernameFromHref(link.getAttribute('href') || link.href))) {
+    return true;
+  }
+
+  const greeting = document.querySelector('#gh-ug, [data-testid*="account" i]');
+  if (/Hi[, ]+/i.test(String(greeting?.textContent || ''))) return true;
+
+  if (document.querySelector('a[href*="SignOut"], a[href*="signout"], a[href*="/logout"]')) {
+    return true;
+  }
+
+  return /(?:^|;\s*)s=/.test(document.cookie);
+}
+
 function getEbayPageState() {
-  const url = window.location.href;
   const path = window.location.pathname;
 
-  if (url.includes('signin.ebay.com') || document.querySelector('#userid, #pass')) {
-    return 'login';
-  }
-  if (path.includes('/sh/lst/')) {
+  if (isEbaySignInPage()) return 'login';
+  if (
+    path.includes('/sh/') ||
+    path.includes('/sl/') ||
+    path.includes('/lstng') ||
+    path.includes('/sellerhub') ||
+    path.includes('/mys/') ||
+    path.includes('/myb/') ||
+    path.includes('/mye/')
+  ) {
     return 'selling';
   }
-  if (path === '/' || url === 'https://www.ebay.com/') {
+  if (path.includes('/usr/') || path.includes('/str/')) {
+    return 'profile';
+  }
+  if (path === '/' || path === '/n/all-categories') {
     return 'home';
   }
-  return 'unknown';
+  return isEbayLoggedIn() ? 'session' : 'unknown';
+}
+
+function ebayItemIdFromValue(value) {
+  const raw = String(value || '');
+  const hrefMatch = raw.match(/(?:\/itm\/|item(?:id)?=)(\d{9,13})/i);
+  if (hrefMatch) return hrefMatch[1];
+  const digits = raw.replace(/\D/g, '');
+  return /^\d{9,13}$/.test(digits) ? digits : '';
 }
 
 function ebayImageMap() {
   const { listingsFromEmbeddedJson } = globalThis.CrosslistScrape;
   const map = new Map();
   listingsFromEmbeddedJson((obj) => {
-    const raw = obj.legacyItemId || obj.itemId || obj.listingId || obj.id;
-    const itemId = String(raw || '').replace(/\D/g, '');
-    if (!/^\d{9,13}$/.test(itemId)) return null;
+    const itemId = ebayItemIdFromValue(obj.legacyItemId || obj.itemId || obj.listingId || obj.id);
+    if (!itemId) return null;
     const collected = [];
     const push = (value) => {
       if (typeof value === 'string' && /ebayimg|thumbs\.ebay/i.test(value)) collected.push(value);
@@ -41,41 +120,75 @@ function ebayImageMap() {
   return map;
 }
 
+function addEbayListing(listings, seen, fields) {
+  const { buildListing } = globalThis.CrosslistScrape;
+  const itemId = ebayItemIdFromValue(fields.platformListingId || fields.id);
+  if (!itemId || seen.has(itemId)) return;
+  seen.add(itemId);
+  listings.push(
+    buildListing({
+      ...fields,
+      id: `ebay_${itemId}`,
+      platform: 'ebay',
+      platformListingId: itemId,
+      url: fields.url || `https://www.ebay.com/itm/${itemId}`,
+    })
+  );
+}
+
 function scrapeEbayListings() {
-  const { findListingCard, priceFromNode, extractImages, titleFromCard, quantityFromNode, buildListing } =
+  const { findListingCard, priceFromNode, extractImages, titleFromCard, quantityFromNode, listingsFromEmbeddedJson } =
     globalThis.CrosslistScrape;
+  const pageState = getEbayPageState();
+  if (pageState === 'login' || pageState === 'home') return [];
+
   const listings = [];
   const seen = new Set();
   const imageMap = ebayImageMap();
 
-  document.querySelectorAll('a[href*="/itm/"]').forEach((anchor) => {
-    const href = anchor.getAttribute('href') || '';
-    const match = href.match(/\/itm\/(\d+)/);
-    if (!match) return;
-    const itemId = match[1];
-    if (seen.has(itemId)) return;
-    seen.add(itemId);
+  listingsFromEmbeddedJson((obj) => {
+    const itemId = ebayItemIdFromValue(obj.legacyItemId || obj.itemId || obj.listingId || obj.id);
+    const title = obj.title || obj.listingTitle || obj.name;
+    if (!itemId || !title) return null;
+    addEbayListing(listings, seen, {
+      title,
+      description: obj.description || '',
+      price: globalThis.CrosslistScrape.parseApiMoney(obj.price) || globalThis.CrosslistScrape.parseMoney(obj.price),
+      quantity: obj.quantity || 1,
+      images: imageMap.get(itemId) || [],
+      platformListingId: itemId,
+      status: 'active',
+    });
+    return null;
+  });
 
-    const card = findListingCard(anchor, { hrefIncludes: '/itm/' });
-    const row = anchor.closest('tr, [role="row"], li, article') || card;
-    let images = extractImages(row);
-    if (!images.length) images = extractImages(card);
-    if (!images.length) images = imageMap.get(itemId) || [];
-    listings.push(
-      buildListing({
-        id: `ebay_${itemId}`,
-        title: titleFromCard(card, anchor, `eBay item ${itemId}`),
+  document.querySelectorAll('a[href*="/itm/"], a[href*="itemid=" i], a[href*="itemId="], [data-item-id], [data-listing-id]').forEach(
+    (node) => {
+      const itemId = ebayItemIdFromValue(
+        node.getAttribute('href') ||
+          node.getAttribute('data-item-id') ||
+          node.getAttribute('data-listing-id') ||
+          node.getAttribute('data-itemid')
+      );
+      if (!itemId || seen.has(itemId)) return;
+
+      const card = node.tagName === 'A' ? findListingCard(node, { hrefIncludes: '/itm/' }) : node.closest('tr, [role="row"], li, article') || node;
+      const row = node.closest('tr, [role="row"], li, article') || card;
+      let images = extractImages(row);
+      if (!images.length) images = extractImages(card);
+      if (!images.length) images = imageMap.get(itemId) || [];
+      addEbayListing(listings, seen, {
+        title: titleFromCard(card, node, `eBay item ${itemId}`),
         description: '',
         price: priceFromNode(card),
         quantity: quantityFromNode(card),
         images,
-        platform: 'ebay',
         platformListingId: itemId,
         status: 'active',
         url: `https://www.ebay.com/itm/${itemId}`,
-      })
-    );
-  });
+      });
+    }
+  );
 
   return listings;
 }
@@ -89,18 +202,26 @@ async function preparePageForScrape() {
   await new Promise((r) => setTimeout(r, 400));
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.command !== 'SCRAPE_EBAY_LISTINGS') return;
+function ebayScrapePayload() {
+  return {
+    listings: scrapeEbayListings(),
+    pageState: getEbayPageState(),
+    url: window.location.href,
+    loggedIn: isEbayLoggedIn(),
+    account: getEbayAccount() || undefined,
+  };
+}
 
-  (async () => {
-    await preparePageForScrape();
-    const listings = scrapeEbayListings();
-    sendResponse({
-      listings,
-      pageState: getEbayPageState(),
-      url: window.location.href,
-    });
-  })();
+if (!globalThis.__crosslistEbayListener) {
+  globalThis.__crosslistEbayListener = true;
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.command !== 'SCRAPE_EBAY_LISTINGS') return;
 
-  return true;
-});
+    (async () => {
+      await preparePageForScrape();
+      sendResponse(ebayScrapePayload());
+    })();
+
+    return true;
+  });
+}

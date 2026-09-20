@@ -1,23 +1,26 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import axios from 'axios';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { v4 as uuidv4 } from 'uuid';
 import open from 'open';
 import * as userStore from './server/db.js';
 
-// Load environment variables
-dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 const requestContext = new AsyncLocalStorage();
 
+if (process.env.VERCEL) {
+  app.set('trust proxy', 1);
+}
+
 // Middleware
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 function currentListings() {
@@ -99,7 +102,118 @@ app.use((req, res, next) => {
   next();
 });
 
-const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+const QUIET_API = new Set([
+  'GET /api/health',
+  'GET /api/auth/me',
+  'GET /api/auth/status',
+]);
+
+const SECRET_KEYS = /password|secret|token|authorization|cookie|code|refresh/i;
+
+function redactValue(key, value, depth = 0) {
+  if (value == null) return value;
+  if (SECRET_KEYS.test(String(key || ''))) return '[redacted]';
+  if (Array.isArray(value)) {
+    return depth > 2 ? `[${value.length} items]` : value.slice(0, 8).map((item, i) => redactValue(i, item, depth + 1));
+  }
+  if (typeof value === 'object') {
+    if (depth > 2) return '{…}';
+    const out = {};
+    for (const [nextKey, nextValue] of Object.entries(value).slice(0, 20)) {
+      out[nextKey] = redactValue(nextKey, nextValue, depth + 1);
+    }
+    return out;
+  }
+  if (typeof value === 'string' && value.length > 180) return `${value.slice(0, 177)}…`;
+  return value;
+}
+
+function recordActivity(type, message, detail, req = null) {
+  const user = req?.user || getCurrentUser();
+  if (!user?.id || !message) return;
+  try {
+    userStore.appendActivity(user.id, {
+      type,
+      source: detail?.source || 'server',
+      message,
+      detail,
+    });
+  } catch (error) {
+    console.warn('Failed to record activity:', error.message);
+  }
+}
+
+function serializeError(error) {
+  if (error == null) return { message: 'Unknown error' };
+  if (typeof error !== 'object') return { message: String(error) };
+  return {
+    message: error.message || String(error),
+    status: error.status || error.response?.status || undefined,
+    data: redactValue('data', error.response?.data),
+    stack: error.stack,
+  };
+}
+
+function logError(context, error, extra = {}) {
+  const axiosData = error?.response?.data;
+  const fallback = error?.message || (typeof error === 'string' ? error : 'Unknown error');
+  const message = extra.message || `${context}: ${typeof axiosData === 'string' ? axiosData : fallback}`;
+  const detail = {
+    source: extra.source || 'server',
+    context,
+    error: serializeError(error),
+    ...(extra.detail || {}),
+  };
+  console.error(message, axiosData || error);
+  if (extra.req) extra.req.loggedError = true;
+  recordActivity('error', message, detail, extra.req);
+}
+
+process.on('unhandledRejection', (error) => {
+  logError('unhandledRejection', error);
+});
+process.on('uncaughtException', (error) => {
+  logError('uncaughtException', error);
+});
+
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api')) return next();
+  const route = `${req.method} ${req.path}`;
+  if (QUIET_API.has(route)) return next();
+  const started = Date.now();
+  res.on('finish', () => {
+    const user = req.user;
+    if (!user) return;
+    const status = res.statusCode;
+    if (status === 304) return;
+    if (req.method === 'GET' && req.path === '/api/listings/image-matches') return;
+    if (status >= 400 && req.loggedError) return;
+    const type = status >= 400 ? 'error' : req.method === 'GET' ? 'info' : 'success';
+    const detail = {
+      method: req.method,
+      path: req.path,
+      status,
+      ms: Date.now() - started,
+    };
+    if (req.method !== 'GET' && req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+      detail.body = redactValue('body', req.body);
+    }
+    recordActivity(type, `${req.method} ${req.path} → ${status}`, detail, req);
+  });
+  next();
+});
+
+function resolveBaseUrl() {
+  const explicit = String(process.env.BASE_URL || '').trim().replace(/\/$/, '');
+  if (explicit) return explicit;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return `http://localhost:${PORT}`;
+}
+
+const BASE_URL = resolveBaseUrl();
+
+const UPLOADS_DIR = path.join(userStore.DATA_DIR, 'uploads');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 function isPlaceholder(value) {
   if (!value) return true;
@@ -135,22 +249,186 @@ function createPkce() {
   return { verifier, challenge };
 }
 
+function ebayUsesProduction() {
+  if (process.env.EBAY_USE_PRODUCTION === 'false') return false;
+  if (process.env.EBAY_USE_PRODUCTION === 'true') return true;
+  const auth = process.env.EBAY_AUTH_BASE_URL || '';
+  const api = process.env.EBAY_BASE_URL || '';
+  if (auth.includes('sandbox') || api.includes('sandbox')) return false;
+  // Production lets sellers use Google SSO on eBay's official OAuth page.
+  return true;
+}
+
 function getEbayAuthBase() {
-  if (process.env.EBAY_AUTH_BASE_URL?.includes('auth.')) {
-    return process.env.EBAY_AUTH_BASE_URL.replace(/\/$/, '');
+  return ebayUsesProduction() ? 'https://auth.ebay.com' : 'https://auth.sandbox.ebay.com';
+}
+
+function getEbayApiBase() {
+  return ebayUsesProduction() ? 'https://api.ebay.com' : 'https://api.sandbox.ebay.com';
+}
+
+const TITLE_STOPWORDS = new Set([
+  'the',
+  'a',
+  'an',
+  'and',
+  'or',
+  'for',
+  'with',
+  'from',
+  'this',
+  'that',
+  'very',
+  'gently',
+  'official',
+  'officially',
+  'licensed',
+  'merch',
+  'show',
+  'used',
+  'new',
+  'nwt',
+  'nwot',
+  'size',
+  'sz',
+  'mens',
+  'men',
+  'womens',
+  'women',
+  'man',
+  'woman',
+  'unisex',
+  'in',
+  'on',
+  'of',
+  'to',
+  'by',
+  'at',
+  'as',
+  'is',
+  'it',
+  'its',
+  'into',
+  'condition',
+  'good',
+  'great',
+  'excellent',
+  'perfect',
+  'like',
+  'please',
+  'read',
+  'description',
+  'shipping',
+  'free',
+  'album',
+  'panel',
+  'mint',
+  'heavily',
+  'worn',
+]);
+const TITLE_SIZE_WORDS = new Set([
+  'xs',
+  's',
+  'm',
+  'l',
+  'xl',
+  'xxl',
+  'xxxl',
+  '2xl',
+  '3xl',
+  'small',
+  'medium',
+  'large',
+]);
+
+function stripTitleJunk(title) {
+  return String(title || '')
+    .replace(/\boffer expired\b/gi, ' ')
+    .replace(/\bnew notification\b/gi, ' ')
+    .replace(/notification.*$/gi, ' ')
+    .replace(/\breach more buyers\b/gi, ' ')
+    .replace(/\bbuy it now\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function collapseRepeatedTitle(title) {
+  const text = stripTitleJunk(String(title || '').replace(/\s+/g, ' '));
+  if (text.length < 24) return text;
+  const lower = text.toLowerCase();
+  const start = lower.slice(0, Math.min(24, Math.floor(text.length / 2)));
+  let idx = lower.indexOf(start, 12);
+  while (idx !== -1) {
+    const left = text.slice(0, idx).replace(/[\s\-|:–—]+$/g, '');
+    const right = text.slice(idx);
+    const leftN = left.toLowerCase();
+    const rightN = right.toLowerCase();
+    let same = 0;
+    const check = Math.min(leftN.length, rightN.length);
+    while (same < check && leftN[same] === rightN[same]) same += 1;
+    if (left.length >= 16 && same >= Math.min(16, Math.floor(leftN.length * 0.6))) {
+      return left.trim();
+    }
+    idx = lower.indexOf(start, idx + 1);
   }
-  const apiBase = process.env.EBAY_BASE_URL || '';
-  return apiBase.includes('sandbox')
-    ? 'https://auth.sandbox.ebay.com'
-    : 'https://auth.ebay.com';
+  return text;
+}
+
+function cleanedListingTitle(title) {
+  return collapseRepeatedTitle(title);
 }
 
 function normalizeTitle(title) {
-  return String(title || '')
+  return collapseRepeatedTitle(title)
     .toLowerCase()
-    .replace(/[^\w\s]/g, '')
+    .replace(/&/g, '')
+    .replace(/\bgrey\b/g, 'gray')
+    .replace(/\bcolour\b/g, 'color')
+    .replace(/[^\w\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function titleTokens(title) {
+  const tokens = new Set();
+  for (const token of normalizeTitle(title).split(' ')) {
+    if (!token || token.length < 2) continue;
+    if (TITLE_STOPWORDS.has(token) || TITLE_SIZE_WORDS.has(token)) continue;
+    tokens.add(token);
+  }
+  return tokens;
+}
+
+function titleSimilarity(a, b) {
+  const left = titleTokens(a);
+  const right = titleTokens(b);
+  if (!left.size || !right.size) return { shared: 0, jaccard: 0, containment: 0 };
+  let shared = 0;
+  for (const token of left) {
+    if (right.has(token)) shared += 1;
+  }
+  return {
+    shared,
+    jaccard: shared / (left.size + right.size - shared),
+    containment: shared / Math.min(left.size, right.size),
+  };
+}
+
+function titlesAreSameProduct(a, b) {
+  const left = normalizeTitle(a);
+  const right = normalizeTitle(b);
+  if (left && left === right) return true;
+  const { shared, jaccard, containment } = titleSimilarity(a, b);
+  if (shared >= 5 && containment >= 0.7) return true;
+  if (shared >= 4 && containment >= 0.7 && jaccard >= 0.45) return true;
+  if (shared >= 6 && containment >= 0.5) return true;
+  return false;
+}
+
+function titlesLookRelated(a, b) {
+  if (titlesAreSameProduct(a, b)) return true;
+  const { shared, jaccard, containment } = titleSimilarity(a, b);
+  return shared >= 3 && (containment >= 0.42 || jaccard >= 0.24);
 }
 
 function decoratePlatformEntry(entry, listing) {
@@ -234,7 +512,20 @@ function findExistingListing(incoming) {
       if (normalizeTitle(listing.title) === titleKey) return listing;
     }
   }
-  return null;
+
+  let best = null;
+  let bestScore = 0;
+  for (const listing of listings.values()) {
+    if (platform && listingHasPlatform(listing, platform)) continue;
+    if (!titlesAreSameProduct(incoming?.title, listing.title)) continue;
+    const { shared, jaccard, containment } = titleSimilarity(incoming?.title, listing.title);
+    const score = shared * 2 + containment + jaccard;
+    if (score > bestScore) {
+      best = listing;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 const IMAGE_QUERY_DROP = new Set([
@@ -285,6 +576,9 @@ function normalizeImageUrl(url) {
 
 function isRealListingImage(url) {
   const value = String(url || '').trim();
+  if (!value) return false;
+  if (value.startsWith('/uploads/')) return true;
+  if (value.startsWith('data:image/')) return true;
   if (!/^https?:\/\//i.test(value)) return false;
   return !/placehold\.co|via\.placeholder|placeholder\.com|dummyimage/i.test(value);
 }
@@ -355,8 +649,8 @@ async function fetchListingThumbnail(listing) {
     try {
       const image = extractOgImage(await fetchHtml(url));
       if (image) return image;
-    } catch (_error) {
-      // Try the next marketplace URL.
+    } catch (error) {
+      logError('Listing thumbnail fetch', error, { detail: { url, listingId: listing?.id } });
     }
   }
   return '';
@@ -405,7 +699,7 @@ async function hydrateListingImages(listing) {
   try {
     image = await fetchListingThumbnail(listing);
   } catch (error) {
-    console.warn('Listing image hydration failed:', listing?.title || listing?.id, error.message);
+    logError('Listing image hydration', error, { detail: { listingId: listing?.id, title: listing?.title } });
   }
   const updated = {
     ...(image ? applyListingImages(listing, [image, ...(listing.images || [])]) : toUnifiedListing(listing)),
@@ -421,9 +715,17 @@ async function hydrateMissingListingImages(targets) {
   return mapPool(pending, 4, hydrateListingImages);
 }
 
+function listingImageList(listing) {
+  const images = [...(listing?.images || [])];
+  for (const entry of Object.values(getPlatforms(listing))) {
+    if (Array.isArray(entry?.images)) images.push(...entry.images);
+  }
+  return images;
+}
+
 function listingImageKeys(listing) {
   const keys = new Set();
-  for (const image of listing?.images || []) {
+  for (const image of listingImageList(listing)) {
     const url = String(image || '').trim();
     if (!url) continue;
     const normalized = normalizeImageUrl(url);
@@ -473,15 +775,22 @@ function summarizeMatchListing(listing) {
 
 function findImageMatchInInventory(incoming, platform) {
   const incomingKeys = listingImageKeys(incoming);
-  if (!incomingKeys.size) return null;
-  const titleKey = normalizeTitle(incoming?.title);
+  let best = null;
+  let bestScore = 0;
   for (const listing of listings.values()) {
     if (platform && listingHasPlatform(listing, platform)) continue;
-    if (titleKey && normalizeTitle(listing.title) === titleKey) continue;
-    if (!listingsShareImage(incoming, listing)) continue;
-    return listing;
+    if (titlesAreSameProduct(incoming?.title, listing.title)) continue;
+    const related = titlesLookRelated(incoming?.title, listing.title);
+    const sharedImage = incomingKeys.size ? listingsShareImage(incoming, listing) : false;
+    if (!related && !sharedImage) continue;
+    const { shared, jaccard, containment } = titleSimilarity(incoming?.title, listing.title);
+    const score = (sharedImage ? 4 : 0) + shared + containment + jaccard;
+    if (score > bestScore) {
+      best = listing;
+      bestScore = score;
+    }
   }
-  return null;
+  return best;
 }
 
 function findImageMatchGroups() {
@@ -509,7 +818,7 @@ function findImageMatchGroups() {
       const right = items[j];
       if (dismissed.has(userStore.imageMatchPairKey(left.id, right.id))) continue;
       if (platformsOverlap(left, right)) continue;
-      if (!listingsShareImage(left, right)) continue;
+      if (!listingsShareImage(left, right) && !titlesLookRelated(left.title, right.title)) continue;
       union(left.id, right.id);
     }
   }
@@ -547,7 +856,7 @@ function mergeInventoryListings(primaryId, matchIds) {
   for (const [platform, entry] of Object.entries(getPlatforms(primary))) {
     platforms[platform] = decoratePlatformEntry(entry, primary);
   }
-  const images = [...(primary.images || [])];
+  const images = [...listingImageList(primary)];
   const seenImages = new Set(images.map((image) => normalizeImageUrl(image)).filter(Boolean));
   const mergedIds = [];
 
@@ -560,7 +869,7 @@ function mergeInventoryListings(primaryId, matchIds) {
     for (const [platform, entry] of Object.entries(otherPlatforms)) {
       if (!platforms[platform]) platforms[platform] = decoratePlatformEntry(entry, other);
     }
-    for (const image of other.images || []) {
+    for (const image of listingImageList(other)) {
       const key = normalizeImageUrl(image);
       if (!image || (key && seenImages.has(key))) continue;
       if (key) seenImages.add(key);
@@ -572,6 +881,7 @@ function mergeInventoryListings(primaryId, matchIds) {
 
   const updated = {
     ...toUnifiedListing(primary),
+    title: cleanedListingTitle(primary.title) || primary.title,
     description: primary.description || '',
     platforms,
     images,
@@ -579,6 +889,76 @@ function mergeInventoryListings(primaryId, matchIds) {
   };
   listings.set(primary.id, updated);
   return { listing: updated, mergedIds };
+}
+
+function pickPrimaryListing(members) {
+  return [...members].sort((a, b) => {
+    const platformDiff = listingPlatformKeys(b).length - listingPlatformKeys(a).length;
+    if (platformDiff) return platformDiff;
+    const imageDiff = listingImageList(b).length - listingImageList(a).length;
+    if (imageDiff) return imageDiff;
+    const titleA = cleanedListingTitle(a.title);
+    const titleB = cleanedListingTitle(b.title);
+    if (titleA.length !== titleB.length) return titleA.length - titleB.length;
+    return String(b.lastUpdated || '').localeCompare(String(a.lastUpdated || ''));
+  })[0];
+}
+
+function mergeObviousDuplicateListings() {
+  const items = Array.from(listings.values()).map((listing) => toUnifiedListing(listing));
+  const parent = new Map(items.map((item) => [item.id, item.id]));
+
+  function find(id) {
+    while (parent.get(id) !== id) {
+      parent.set(id, parent.get(parent.get(id)));
+      id = parent.get(id);
+    }
+    return id;
+  }
+
+  function union(a, b) {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parent.set(rootA, rootB);
+  }
+
+  for (let i = 0; i < items.length; i += 1) {
+    for (let j = i + 1; j < items.length; j += 1) {
+      const left = items[i];
+      const right = items[j];
+      if (platformsOverlap(left, right)) continue;
+      if (!titlesAreSameProduct(left.title, right.title)) continue;
+      union(left.id, right.id);
+    }
+  }
+
+  const grouped = new Map();
+  for (const item of items) {
+    const root = find(item.id);
+    if (!grouped.has(root)) grouped.set(root, []);
+    grouped.get(root).push(item);
+  }
+
+  let mergedCount = 0;
+  for (const members of grouped.values()) {
+    if (members.length < 2) continue;
+    const primary = pickPrimaryListing(members);
+    const matchIds = members.map((item) => item.id).filter((id) => id !== primary.id);
+    const result = mergeInventoryListings(primary.id, matchIds);
+    mergedCount += result.mergedIds.length;
+  }
+  return mergedCount;
+}
+
+function cleanStoredListingTitles() {
+  for (const listing of listings.values()) {
+    const cleaned = cleanedListingTitle(listing.title);
+    if (!cleaned || cleaned === listing.title) continue;
+    listings.set(listing.id, {
+      ...toUnifiedListing(listing),
+      title: cleaned,
+    });
+  }
 }
 
 function upsertImportedListing(incoming) {
@@ -597,15 +977,21 @@ function upsertImportedListing(incoming) {
         incoming
       );
     }
+    const incomingTitle = cleanedListingTitle(incoming.title) || incoming.title;
+    const matchTitle = cleanedListingTitle(match.title) || match.title;
+    const preferredTitle =
+      incomingTitle && matchTitle
+        ? incomingTitle.length <= matchTitle.length
+          ? incomingTitle
+          : matchTitle
+        : incomingTitle || matchTitle;
     const updated = {
       ...toUnifiedListing(match),
-      title: incoming.title || match.title,
+      title: preferredTitle,
       description: incoming.description || match.description || '',
       price: parseListingPrice(match.price) || parseListingPrice(incoming.price) || 0,
       quantity: incoming.quantity ?? match.quantity ?? 1,
-      images: realListingImages(incoming.images).length
-        ? realListingImages(incoming.images)
-        : realListingImages(match.images),
+      images: realListingImages([...(match.images || []), ...(incoming.images || [])]),
       platforms,
       lastUpdated: new Date().toISOString(),
     };
@@ -615,7 +1001,7 @@ function upsertImportedListing(incoming) {
 
   const created = {
     id: `item_${uuidv4()}`,
-    title: incoming.title || 'Untitled Item',
+    title: cleanedListingTitle(incoming.title) || incoming.title || 'Untitled Item',
     description: incoming.description || '',
     price: parseListingPrice(incoming.price),
     quantity: incoming.quantity ?? 1,
@@ -1095,23 +1481,23 @@ async function fetchLiveEbayCandidates(user) {
   let items = [];
   let offers = [];
   try {
-    const response = await axios.get(`${process.env.EBAY_BASE_URL}/sell/inventory/v1/inventory_item`, {
+    const response = await axios.get(`${getEbayApiBase()}/sell/inventory/v1/inventory_item`, {
       headers: ebayAuthHeaders(user.ebayToken),
       params: { limit: 200 },
     });
     items = response.data.inventoryItems || [];
   } catch (error) {
-    console.warn('eBay inventory fetch failed:', error.response?.data || error.message);
+    logError('eBay inventory fetch', error);
   }
 
   try {
-    const response = await axios.get(`${process.env.EBAY_BASE_URL}/sell/inventory/v1/offer`, {
+    const response = await axios.get(`${getEbayApiBase()}/sell/inventory/v1/offer`, {
       headers: ebayAuthHeaders(user.ebayToken),
       params: { limit: 200 },
     });
     offers = response.data.offers || response.data.offerResponses || [];
   } catch (error) {
-    console.warn('eBay offer fetch failed:', error.response?.data || error.message);
+    logError('eBay offer fetch', error);
   }
 
   const itemsBySku = new Map();
@@ -1178,6 +1564,7 @@ function connectDemoFacebook() {
 
 // Serve static files from public directory
 app.use(express.static('public'));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 app.get('/', (_req, res) => {
   res.redirect('/dashboard.html');
@@ -1214,6 +1601,7 @@ app.post('/api/auth/signup', (req, res) => {
       user: { id: user.id, email: user.email, name: user.name || '' },
     });
   } catch (error) {
+    logError('Signup', error, { req });
     return res.status(error.status || 500).json({ error: error.message || 'Could not create account' });
   }
 });
@@ -1228,6 +1616,7 @@ app.post('/api/auth/login', (req, res) => {
       user: { id: user.id, email: user.email, name: user.name || '' },
     });
   } catch (error) {
+    logError('Login', error, { req });
     return res.status(error.status || 500).json({ error: error.message || 'Could not sign in' });
   }
 });
@@ -1302,7 +1691,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
     userStore.setSessionCookie(res, sessionId);
     return res.redirect(created ? '/dashboard.html?googleSignup=1' : '/dashboard.html');
   } catch (oauthError) {
-    console.error('Google OAuth error:', oauthError.response?.data || oauthError.message);
+    logError('Google OAuth', oauthError, { req });
     return res.redirect('/dashboard.html?authError=google');
   }
 });
@@ -1349,6 +1738,269 @@ const IMPORT_PLATFORMS = ['ebay', 'facebook', 'depop', 'poshmark', 'etsy'];
 
 function isRealConnectionMode(mode) {
   return mode === 'live' || mode === 'password' || mode === 'extension';
+}
+
+const CREATE_URLS = {
+  ebay: 'https://www.ebay.com/sl/list',
+  facebook: 'https://www.facebook.com/marketplace/create/item',
+  depop: 'https://www.depop.com/products/create/',
+  poshmark: 'https://poshmark.com/create-listing',
+  etsy: 'https://www.etsy.com/your/shops/me/tools/listings/create',
+};
+
+function safeUserId(userId) {
+  return String(userId || '').replace(/[^a-zA-Z0-9._-]/g, '');
+}
+
+function extFromMime(mime, filename = '') {
+  const fromName = String(filename).toLowerCase().match(/\.(jpe?g|png|webp|gif)$/);
+  if (fromName) return fromName[1] === 'jpeg' ? 'jpg' : fromName[1];
+  const type = String(mime || '').toLowerCase();
+  if (type.includes('png')) return 'png';
+  if (type.includes('webp')) return 'webp';
+  if (type.includes('gif')) return 'gif';
+  return 'jpg';
+}
+
+function persistListingImage(userId, image) {
+  const raw = String(image || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('/uploads/')) return raw;
+  if (/^https?:\/\//i.test(raw) && isRealListingImage(raw)) return raw;
+  const match = raw.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/i);
+  if (!match) return '';
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > 10 * 1024 * 1024) return '';
+  const owner = safeUserId(userId);
+  const dir = path.join(UPLOADS_DIR, owner);
+  fs.mkdirSync(dir, { recursive: true });
+  const name = `${uuidv4()}.${extFromMime(match[1])}`;
+  fs.writeFileSync(path.join(dir, name), buffer);
+  return `/uploads/${owner}/${name}`;
+}
+
+function persistListingImages(userId, images = []) {
+  return [...new Set((images || []).map((image) => persistListingImage(userId, image)).filter(Boolean))].slice(0, 8);
+}
+
+function connectedStores(user) {
+  return IMPORT_PLATFORMS.map((id) => ({ id, mode: getConnectionMode(user, id) })).filter(
+    (store) => store.mode && store.mode !== 'none'
+  );
+}
+
+function requestedPushPlatforms(user, requested) {
+  const connected = connectedStores(user);
+  const wanted = Array.isArray(requested) && requested.length
+    ? requested.map((value) => String(value).toLowerCase()).filter((id) => IMPORT_PLATFORMS.includes(id))
+    : connected.map((store) => store.id);
+  return wanted.map((id) => ({
+    id,
+    mode: getConnectionMode(user, id),
+  }));
+}
+
+function mapEbayCondition(value) {
+  const key = String(value || 'used_good').toLowerCase().replace(/\s+/g, '_');
+  if (key === 'new') return 'NEW';
+  if (key === 'like_new' || key === 'used_excellent') return 'USED_EXCELLENT';
+  if (key === 'used_fair' || key === 'fair') return 'USED_ACCEPTABLE';
+  return 'USED_GOOD';
+}
+
+function pendingPlatformEntry(listing, platform, extra = {}) {
+  return {
+    listingId: extra.listingId || null,
+    url: extra.url || CREATE_URLS[platform] || null,
+    status: extra.status || 'pending',
+    price: parseListingPrice(listing.price),
+    images: listing.images || [],
+    error: extra.error || null,
+    needsReview: Boolean(extra.needsReview),
+  };
+}
+
+function applyPlatformResult(listing, platform, result = {}) {
+  const platforms = getPlatforms(listing);
+  const status = result.status || (result.listingId ? 'active' : result.error ? 'error' : 'listing');
+  platforms[platform] = {
+    ...pendingPlatformEntry(listing, platform),
+    ...platforms[platform],
+    listingId: result.listingId || platforms[platform]?.listingId || null,
+    url: result.url || platforms[platform]?.url || CREATE_URLS[platform] || null,
+    status,
+    price: parseListingPrice(listing.price),
+    images: listing.images || [],
+    error: result.error || null,
+    needsReview: Boolean(result.needsReview),
+  };
+  const listed = Object.values(platforms).some((entry) => {
+    const value = String(entry?.status || '').toLowerCase();
+    return entry?.listingId && value !== 'pending' && value !== 'draft' && value !== 'listing' && value !== 'error';
+  });
+  return toUnifiedListing({
+    ...listing,
+    platforms,
+    status: listed ? 'active' : listing.status || 'draft',
+    lastUpdated: new Date().toISOString(),
+  });
+}
+
+function extensionTaskFor(platform, listing) {
+  return {
+    platform,
+    createUrl: CREATE_URLS[platform],
+    item: {
+      id: listing.id,
+      title: listing.title,
+      description: listing.description || '',
+      price: listing.price,
+      quantity: listing.quantity || 1,
+      images: listing.images || [],
+      condition: listing.condition || 'used_good',
+      sku: listing.sku || '',
+    },
+  };
+}
+
+async function createEbayListingViaApi(user, listing) {
+  const sku = `xl_${String(listing.id).replace(/[^a-zA-Z0-9]/g, '').slice(-12)}_${Date.now().toString(36)}`;
+  const imageUrls = (listing.images || []).filter((url) => /^https:\/\//i.test(url));
+  await axios.put(
+    `${getEbayApiBase()}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
+    {
+      availability: {
+        shipToLocationAvailability: {
+          quantity: listing.quantity || 1,
+        },
+      },
+      condition: mapEbayCondition(listing.condition),
+      product: {
+        title: String(listing.title || '').slice(0, 80),
+        description: listing.description || listing.title || '',
+        imageUrls: imageUrls.length ? imageUrls : undefined,
+      },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${user.ebayToken}`,
+        'Content-Type': 'application/json',
+        'Content-Language': 'en-US',
+      },
+    }
+  );
+
+  const offerResponse = await axios.post(
+    `${getEbayApiBase()}/sell/inventory/v1/offer`,
+    {
+      sku,
+      marketplaceId: 'EBAY_US',
+      format: 'FIXED_PRICE',
+      availableQuantity: listing.quantity || 1,
+      categoryId: listing.ebayCategoryId || undefined,
+      pricingSummary: {
+        price: {
+          value: Number(listing.price || 0).toFixed(2),
+          currency: 'USD',
+        },
+      },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${user.ebayToken}`,
+        'Content-Type': 'application/json',
+        'Content-Language': 'en-US',
+      },
+    }
+  );
+
+  const offerId = offerResponse.data?.offerId;
+  let listingId = sku;
+  let url = `https://www.ebay.com/itm/${sku}`;
+  if (offerId) {
+    try {
+      const published = await axios.post(
+        `${getEbayApiBase()}/sell/inventory/v1/offer/${offerId}/publish`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${user.ebayToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      listingId = published.data?.listingId || sku;
+      url = `https://www.ebay.com/itm/${listingId}`;
+    } catch (error) {
+      return {
+        status: 'listing',
+        listingId: sku,
+        url,
+        needsReview: true,
+        error: error.response?.data?.errors?.[0]?.message || error.message,
+      };
+    }
+  }
+  return { status: 'active', listingId, url };
+}
+
+async function pushListingToStores(listing, user, platforms) {
+  const results = [];
+  const extensionTasks = [];
+  let next = toUnifiedListing(listing);
+
+  for (const store of platforms) {
+    const { id: platform, mode } = store;
+    if (!mode || mode === 'none') {
+      const result = {
+        platform,
+        status: 'error',
+        error: `Connect ${platform} before listing`,
+      };
+      next = applyPlatformResult(next, platform, result);
+      results.push(result);
+      continue;
+    }
+
+    if (mode === 'demo') {
+      const result = {
+        platform,
+        status: 'active',
+        listingId: `demo_${platform}_${next.id}`,
+        url: CREATE_URLS[platform],
+      };
+      next = applyPlatformResult(next, platform, result);
+      results.push({ ...result, mode });
+      continue;
+    }
+
+    if (platform === 'ebay' && mode === 'live') {
+      try {
+        const result = await createEbayListingViaApi(user, next);
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, platform, mode });
+        if (result.status === 'active') continue;
+      } catch (error) {
+        const message =
+          error.response?.data?.errors?.[0]?.message ||
+          error.response?.data?.error ||
+          error.message ||
+          'eBay API listing failed';
+        const result = { platform, status: 'listing', error: message, needsReview: true };
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, mode });
+      }
+    } else {
+      const result = { platform, status: 'listing', needsReview: true };
+      next = applyPlatformResult(next, platform, result);
+      results.push({ ...result, mode });
+    }
+
+    extensionTasks.push(extensionTaskFor(platform, next));
+  }
+
+  listings.set(next.id, next);
+  return { listing: next, results, extensionTasks };
 }
 
 function isPlaceholderImportListing(listing) {
@@ -1545,6 +2197,7 @@ app.post('/api/auth/connect/poshmark', async (req, res) => {
       account: user.poshmarkAccount,
     });
   } catch (error) {
+    logError('Poshmark sign-in', error, { req });
     const status = error.status === 401 ? 401 : 502;
     return res.status(status).json({
       error: error.message || 'Poshmark sign-in failed',
@@ -1640,6 +2293,7 @@ app.get('/api/auth/ebay/live', (req, res) => {
       scope: process.env.EBAY_SCOPES || 'https://api.ebay.com/oauth/api_scope https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account',
       state: state
     });
+  // Do not set prompt=login. Production eBay sign-in includes Continue with Google.
   
   res.redirect(authUrl);
 });
@@ -1659,7 +2313,7 @@ app.get('/api/auth/ebay/callback', async (req, res) => {
   
   try {
     // Exchange authorization code for access token
-    const tokenResponse = await axios.post(`${process.env.EBAY_BASE_URL}/identity/v1/oauth2/token`, 
+    const tokenResponse = await axios.post(`${getEbayApiBase()}/identity/v1/oauth2/token`, 
       new URLSearchParams({
         grant_type: 'authorization_code',
         code: code,
@@ -1688,7 +2342,7 @@ app.get('/api/auth/ebay/callback', async (req, res) => {
     
     res.redirect('/dashboard.html?connected=ebay#marketplaces');
   } catch (error) {
-    console.error('eBay OAuth error:', error.response?.data || error.message);
+    logError('eBay OAuth', error, { req });
     res.status(500).send('Authentication failed');
   }
 });
@@ -1793,7 +2447,7 @@ app.get('/api/auth/depop/callback', async (req, res) => {
 
     res.redirect('/dashboard.html?connected=depop#marketplaces');
   } catch (depopError) {
-    console.error('Depop OAuth error:', depopError.response?.data || depopError.message);
+    logError('Depop OAuth', depopError, { req });
     res.redirect('/dashboard.html?oauthError=depop#marketplaces');
   }
 });
@@ -1850,6 +2504,7 @@ async function loginToPoshmark(email, password) {
       }
     } catch (error) {
       if (error.status === 401) throw error;
+      logError('Poshmark login endpoint', error, { detail: { url } });
       lastNetworkError = error;
     }
   }
@@ -1960,7 +2615,7 @@ app.get('/api/auth/etsy/callback', async (req, res) => {
         account = shop?.shop_name || account;
       }
     } catch (profileError) {
-      console.warn('Etsy profile lookup failed:', profileError.response?.data || profileError.message);
+      logError('Etsy profile lookup', profileError, { req });
     }
 
     const userData = oauthResult.user;
@@ -1978,7 +2633,7 @@ app.get('/api/auth/etsy/callback', async (req, res) => {
 
     res.redirect('/dashboard.html?connected=etsy#marketplaces');
   } catch (oauthError) {
-    console.error('Etsy OAuth error:', oauthError.response?.data || oauthError.message);
+    logError('Etsy OAuth', oauthError, { req });
     res.redirect('/dashboard.html?oauthError=etsy#marketplaces');
   }
 });
@@ -2063,7 +2718,7 @@ app.get('/api/listings/ebay', async (req, res) => {
 
     res.json(ebayListings);
   } catch (error) {
-    console.error('Error fetching eBay listings:', error.response?.data || error.message);
+    logError('eBay listings fetch', error, { req });
     res.status(500).json({ error: 'Failed to fetch eBay listings' });
   }
 });
@@ -2130,13 +2785,13 @@ app.get('/api/listings/facebook', async (req, res) => {
       }
     } catch (catalogError) {
       // If catalog access fails, return mock data for demo purposes
-      console.warn('Facebook catalog access failed, returning mock data:', catalogError.message);
+      logError('Facebook catalog access', catalogError, { req });
       
       const mockListings = seedDemoInventory();
       res.json(mockListings);
     }
   } catch (error) {
-    console.error('Error fetching Facebook listings:', error.response?.data || error.message);
+    logError('Facebook listings fetch', error, { req });
     res.status(500).json({ error: 'Failed to fetch Facebook listings' });
   }
 });
@@ -2173,7 +2828,7 @@ app.get('/api/listings/etsy', async (_req, res) => {
     const candidates = await fetchLiveEtsyCandidates(userData);
     return res.json(candidates);
   } catch (error) {
-    console.warn('Etsy listings fetch failed:', error.response?.data || error.message);
+    logError('Etsy listings fetch', error, { req });
     return res.json(Array.from(listings.values()).filter((l) => listingHasPlatform(l, 'etsy')));
   }
 });
@@ -2204,7 +2859,7 @@ app.get('/api/listings/import/candidates', async (req, res) => {
       candidates = await fetchLiveEbayCandidates(user);
       source = 'live';
     } catch (error) {
-      console.warn('eBay import preview failed:', error.response?.data || error.message);
+      logError('eBay import preview', error, { req });
       return res.status(500).json({ error: 'Failed to fetch eBay listings' });
     }
   } else if (mode === 'live' && platform === 'facebook' && user.facebookToken) {
@@ -2212,7 +2867,7 @@ app.get('/api/listings/import/candidates', async (req, res) => {
       candidates = await fetchLiveFacebookCandidates(user);
       source = 'live';
     } catch (error) {
-      console.warn('Facebook import preview failed:', error.response?.data || error.message);
+      logError('Facebook import preview', error, { req });
       return res.status(500).json({ error: 'Failed to fetch Facebook listings' });
     }
   } else if (mode === 'live' && platform === 'etsy' && user.etsyToken) {
@@ -2220,7 +2875,7 @@ app.get('/api/listings/import/candidates', async (req, res) => {
       candidates = await fetchLiveEtsyCandidates(user);
       source = 'live';
     } catch (error) {
-      console.warn('Etsy import preview failed:', error.response?.data || error.message);
+      logError('Etsy import preview', error, { req });
       return res.status(500).json({ error: 'Failed to fetch Etsy listings' });
     }
   }
@@ -2246,6 +2901,7 @@ app.post('/api/listings/import', async (req, res) => {
   try {
     connectionMode = ensureConnectedForImport(platform, { mode, account });
   } catch (error) {
+    logError('Import connection check', error, { req });
     return res.status(error.status || 400).json({ error: error.message });
   }
   const created = [];
@@ -2284,7 +2940,9 @@ app.post('/api/listings/import', async (req, res) => {
   });
 
   const saved = [...created, ...merged];
-  await hydrateMissingListingImages(saved);
+  mergeObviousDuplicateListings();
+  cleanStoredListingTitles();
+  await hydrateMissingListingImages(saved.map((listing) => listings.get(listing.id) || listing));
 
   return res.json({
     platform,
@@ -2313,7 +2971,7 @@ app.get('/api/listings', async (_req, res) => {
             upsertImportedListing(item);
           });
         } catch (error) {
-          console.warn('Skipping live eBay sync:', error.response?.data || error.message);
+          logError('Live eBay sync', error, { req });
         }
       }
     }
@@ -2323,16 +2981,20 @@ app.get('/api/listings', async (_req, res) => {
         // Listings already imported from extension scrape.
       }
     }
+    mergeObviousDuplicateListings();
+    cleanStoredListingTitles();
     await hydrateMissingListingImages();
     res.json(Array.from(listings.values()).map(toUnifiedListing));
   } catch (error) {
-    console.error('Error fetching combined listings:', error.message);
+    logError('Combined listings fetch', error, { req });
     res.status(500).json({ error: 'Failed to fetch listings' });
   }
 });
 
 app.get('/api/listings/image-matches', (req, res) => {
   getDemoUser();
+  mergeObviousDuplicateListings();
+  cleanStoredListingTitles();
   return res.json({
     groups: findImageMatchGroups(),
     dismissedPairKeys: userStore.listImageMatchDismissals(getCurrentUser()?.id),
@@ -2379,7 +3041,7 @@ app.post('/api/listings/image-matches/resolve', (req, res) => {
       groups: findImageMatchGroups(),
     });
   } catch (error) {
-    console.error('Image match resolve failed:', error);
+    logError('Image match resolve', error, { req });
     return res.status(error.status || 500).json({ error: error.message || 'Failed to save match decision' });
   }
 });
@@ -2406,74 +3068,161 @@ async function applyListingUpdates(listing, updates, userData) {
   });
   listings.set(listing.id, updatedListing);
 
-  if (listingHasPlatform(updatedListing, 'ebay') && userData.ebayToken && !userData.ebayDemo && !userData.ebayExtension) {
-    await updateEbayListing(listing.id, updatedListing, userData.ebayToken);
-  }
-  if (
-    listingHasPlatform(updatedListing, 'facebook') &&
-    userData.facebookToken &&
-    !userData.facebookDemo &&
-    !userData.facebookExtension
-  ) {
-    await updateFacebookListing(listing.id, updatedListing, userData.facebookToken);
+  const platforms = getPlatforms(updatedListing);
+  if (safeUpdates.price !== undefined) {
+    await pushLiveMarketplacePrice(updatedListing, platforms, userData);
   }
 
   return updatedListing;
 }
 
+function isLiveMarketplaceId(id) {
+  const value = String(id || '');
+  return Boolean(value) && !/^(demo_|local_|item_)/i.test(value);
+}
+
+async function pushLiveMarketplacePrice(listing, platforms, userData) {
+  const ebayId = platforms.ebay?.listingId;
+  if (
+    isLiveMarketplaceId(ebayId) &&
+    userData.ebayToken &&
+    !userData.ebayDemo &&
+    !userData.ebayExtension
+  ) {
+    try {
+      await updateEbayListing(ebayId, listing, userData.ebayToken);
+    } catch (error) {
+      logError('eBay price push', error);
+    }
+  }
+
+  const etsyId = platforms.etsy?.listingId;
+  if (
+    isLiveMarketplaceId(etsyId) &&
+    userData.etsyToken &&
+    !userData.etsyDemo &&
+    !userData.etsyExtension
+  ) {
+    try {
+      await updateEtsyListingPrice(etsyId, listing.price, userData);
+    } catch (error) {
+      logError('Etsy price push', error);
+    }
+  }
+}
+
+app.post(
+  '/api/uploads',
+  express.raw({ type: () => true, limit: '10mb' }),
+  (req, res) => {
+    const user = getDemoUser();
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || !body.length) {
+      return res.status(400).json({ error: 'Image file is required' });
+    }
+    if (body.length > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Image must be 10MB or smaller' });
+    }
+    const mime = String(req.headers['content-type'] || 'application/octet-stream');
+    if (mime.startsWith('application/json')) {
+      return res.status(400).json({ error: 'Send the image as a file, not JSON' });
+    }
+    const filename = decodeURIComponent(String(req.headers['x-filename'] || 'photo.jpg'));
+    const owner = safeUserId(user.id);
+    const dir = path.join(UPLOADS_DIR, owner);
+    fs.mkdirSync(dir, { recursive: true });
+    const name = `${uuidv4()}.${extFromMime(mime, filename)}`;
+    fs.writeFileSync(path.join(dir, name), body);
+    const url = `/uploads/${owner}/${name}`;
+    return res.status(201).json({ url, filename: name });
+  }
+);
+
 app.post('/api/listings', (req, res) => {
-  const { title, description, price, quantity, images } = req.body || {};
+  const { title, description, price, quantity, images, platforms: requestedPlatforms, sku, condition } = req.body || {};
   if (!title) {
     return res.status(400).json({ error: 'Title is required' });
   }
 
   const userData = getDemoUser();
-  const platforms = {};
-  if (userData.ebayToken) {
-    platforms.ebay = { listingId: `local_ebay_${uuidv4()}`, status: 'active' };
-  }
-  if (userData.facebookToken) {
-    platforms.facebook = { listingId: `local_fb_${uuidv4()}`, status: 'active' };
-  }
-  if (userData.depopToken) {
-    platforms.depop = { listingId: `local_depop_${uuidv4()}`, status: 'active' };
-  }
-  if (userData.poshmarkToken) {
-    platforms.poshmark = { listingId: `local_posh_${uuidv4()}`, status: 'active' };
-  }
-  if (userData.etsyToken) {
-    platforms.etsy = { listingId: `local_etsy_${uuidv4()}`, status: 'active' };
-  }
   const parsedPrice = parseListingPrice(price);
-  const imageList = images || [];
-  if (!Object.keys(platforms).length) {
-    platforms.ebay = { listingId: null, status: 'pending' };
-    platforms.facebook = { listingId: null, status: 'pending' };
-    platforms.depop = { listingId: null, status: 'pending' };
-    platforms.poshmark = { listingId: null, status: 'pending' };
-    platforms.etsy = { listingId: null, status: 'pending' };
-  }
-  for (const platform of Object.keys(platforms)) {
-    platforms[platform] = {
-      ...platforms[platform],
-      price: parsedPrice,
-      images: imageList,
-    };
+  const imageList = persistListingImages(userData.id, images || []);
+  const stores = requestedPushPlatforms(userData, requestedPlatforms);
+  const targetStores = stores.length ? stores : IMPORT_PLATFORMS.map((id) => ({ id, mode: 'none' }));
+  const platforms = {};
+  for (const store of targetStores) {
+    platforms[store.id] = pendingPlatformEntry(
+      { price: parsedPrice, images: imageList },
+      store.id,
+      { status: 'pending' }
+    );
   }
 
-  const item = {
+  const item = toUnifiedListing({
     id: `item_${uuidv4()}`,
-    title,
+    title: String(title).trim(),
     description: description || '',
     price: parsedPrice,
-    quantity: quantity === undefined || quantity === '' ? 1 : parseInt(quantity, 10),
+    quantity: quantity === undefined || quantity === '' ? 1 : parseInt(quantity, 10) || 0,
     images: imageList,
-    status: 'active',
+    sku: sku ? String(sku).trim() : '',
+    condition: condition || 'used_good',
+    status: 'draft',
     platforms,
     lastUpdated: new Date().toISOString(),
-  };
+  });
   listings.set(item.id, item);
   return res.status(201).json(item);
+});
+
+app.post('/api/listings/:id/push', async (req, res) => {
+  try {
+    const user = getDemoUser();
+    const listing = listings.get(req.params.id);
+    if (!listing) return res.status(404).json({ error: 'Listing not found' });
+
+    const platforms = requestedPushPlatforms(user, req.body?.platforms);
+    if (!platforms.length) {
+      return res.status(400).json({
+        error: 'Connect at least one marketplace before listing this item',
+      });
+    }
+
+    const pushed = await pushListingToStores(listing, user, platforms);
+    recordActivity('success', `Pushed "${listing.title}" to ${platforms.map((store) => store.id).join(', ')}`, {
+      source: 'server',
+      listingId: listing.id,
+      results: pushed.results,
+    });
+    return res.json({
+      listing: pushed.listing,
+      results: pushed.results,
+      extensionTasks: pushed.extensionTasks,
+    });
+  } catch (error) {
+    console.error('Push listing failed:', error.response?.data || error.message);
+    return res.status(error.status || 500).json({ error: error.message || 'Failed to list item' });
+  }
+});
+
+app.post('/api/listings/:id/listed', (req, res) => {
+  const listing = listings.get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'Listing not found' });
+
+  const incoming = Array.isArray(req.body?.results) ? req.body.results : [req.body];
+  let next = toUnifiedListing(listing);
+  for (const result of incoming) {
+    const platform = String(result?.platform || '').toLowerCase();
+    if (!IMPORT_PLATFORMS.includes(platform)) continue;
+    next = applyPlatformResult(next, platform, result);
+  }
+  listings.set(next.id, next);
+  recordActivity('info', `Listing results saved for "${next.title}"`, {
+    source: req.body?.source || 'extension',
+    listingId: next.id,
+    results: incoming,
+  });
+  return res.json({ listing: next });
 });
 
 app.patch('/api/listings/bulk', async (req, res) => {
@@ -2492,6 +3241,7 @@ app.patch('/api/listings/bulk', async (req, res) => {
         const updatedListing = await applyListingUpdates(listing, updates, userData);
         results.push({ id, success: true, listing: updatedListing });
       } catch (error) {
+        logError('Bulk listing update', error, { req, detail: { listingId: id } });
         results.push({ id, success: false, error: error.message });
       }
     }
@@ -2504,7 +3254,7 @@ app.patch('/api/listings/bulk', async (req, res) => {
         .filter(Boolean),
     });
   } catch (error) {
-    console.error('Error in bulk update:', error.message);
+    logError('Bulk update', error, { req });
     res.status(500).json({ error: 'Failed to perform bulk update' });
   }
 });
@@ -2555,72 +3305,69 @@ app.patch('/api/listings/:id', async (req, res) => {
     const updatedListing = await applyListingUpdates(listing, updates, userData);
     res.json(updatedListing);
   } catch (error) {
-    console.error('Error updating listing:', error.response?.data || error.message);
+    logError('Listing update', error, { req });
     res.status(500).json({ error: 'Failed to update listing' });
   }
 });
 
 // Helper function to update eBay listing
 async function updateEbayListing(listingId, listingData, accessToken) {
-  // Extract the actual eBay ID from our ID format
-  const ebayId = listingId.replace('ebay_', '');
-  
-  // Update inventory item
-  await axios.put(`${process.env.EBAY_BASE_URL}/sell/inventory/v1/inventory_item/${ebayId}`, 
-    {
-      availability: {
-        shipToLocationAvailability: {
-          quantity: listingData.quantity || 0
-        }
-      },
-      product: {
-        title: listingData.title || '',
-        description: listingData.description || '',
-        imageUrls: listingData.images || []
-      }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
-  
-  // If price needs updating, update the offer
-  if (listingData.price !== undefined) {
-    // First, find the offer associated with this inventory item
-    const offersResponse = await axios.get(`${process.env.EBAY_BASE_URL}/sell/inventory/v1/offer`, {
-      params: {
-        inventory_item_group_key: ebayId // Simplified - in reality you'd need to track offer IDs
-      },
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    // Update the first offer found (simplified)
-    if (offersResponse.data.offerResponses && offersResponse.data.offerResponses.length > 0) {
-      const offerId = offersResponse.data.offerResponses[0].offerId;
-      await axios.put(`${process.env.EBAY_BASE_URL}/sell/inventory/v1/offer/${offerId}`, 
-        {
-          pricingSummary: {
-            price: {
-              value: listingData.price.toString(),
-              currency: 'USD'
-            }
-          }
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-    }
+  const ebayId = String(listingId || '').replace(/^ebay_/, '');
+  if (!/^\d{9,13}$/.test(ebayId)) {
+    throw new Error('Missing eBay item id');
   }
+
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ErrorLanguage>en_US</ErrorLanguage>
+  <WarningLevel>High</WarningLevel>
+  <InventoryStatus>
+    <ItemID>${ebayId}</ItemID>
+    <StartPrice>${Number(listingData.price).toFixed(2)}</StartPrice>
+  </InventoryStatus>
+</ReviseInventoryStatusRequest>`;
+
+  const response = await axios.post(`${getEbayApiBase()}/ws/api.dll`, xml, {
+    headers: {
+      'Content-Type': 'text/xml',
+      'X-EBAY-API-COMPATIBILITY-LEVEL': '967',
+      'X-EBAY-API-CALL-NAME': 'ReviseInventoryStatus',
+      'X-EBAY-API-SITEID': '0',
+      'X-EBAY-API-IAF-TOKEN': accessToken,
+    },
+  });
+  const text = typeof response.data === 'string' ? response.data : String(response.data || '');
+  if (/<Ack>Failure<\/Ack>|<Ack>PartialFailure<\/Ack>/i.test(text)) {
+    const msg = text.match(/<ShortMessage>([^<]+)<\/ShortMessage>/)?.[1] || 'eBay price revise failed';
+    throw new Error(msg);
+  }
+}
+
+async function updateEtsyListingPrice(listingId, price, userData) {
+  const headers = etsyApiHeaders(userData.etsyToken);
+  const inventory = await axios.get(
+    `https://openapi.etsy.com/v3/application/listings/${listingId}/inventory`,
+    { headers }
+  );
+  const products = (inventory.data.products || []).map((product) => ({
+    sku: product.sku,
+    property_values: product.property_values || [],
+    offerings: (product.offerings || []).map((offering) => ({
+      price: Number(price),
+      quantity: offering.quantity,
+      is_enabled: offering.is_enabled !== false,
+    })),
+  }));
+  await axios.put(
+    `https://openapi.etsy.com/v3/application/listings/${listingId}/inventory`,
+    {
+      products,
+      price_on_property: inventory.data.price_on_property || [],
+      quantity_on_property: inventory.data.quantity_on_property || [],
+      sku_on_property: inventory.data.sku_on_property || [],
+    },
+    { headers }
+  );
 }
 
 // Helper function to update Facebook listing
@@ -2665,7 +3412,7 @@ async function updateFacebookListing(listingId, listingData, accessToken) {
   } catch (error) {
     // If direct product update fails (likely due to not being in a catalog),
     // we'll note that but not fail the entire operation
-    console.warn('Facebook product update failed (may not be in catalog):', error.message);
+    logError('Facebook product update', error);
     // In a real app, you might need to handle this differently
   }
 }
@@ -2682,7 +3429,7 @@ app.post('/api/listings/ebay', async (req, res) => {
     
     // Create inventory item
     const sku = `crosslist_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-    const inventoryResponse = await axios.post(`${process.env.EBAY_BASE_URL}/sell/inventory/v1/inventory_item/${sku}`,
+    const inventoryResponse = await axios.post(`${getEbayApiBase()}/sell/inventory/v1/inventory_item/${sku}`,
       {
         availability: {
           shipToLocationAvailability: {
@@ -2704,7 +3451,7 @@ app.post('/api/listings/ebay', async (req, res) => {
     );
     
     // Create offer
-    const offerResponse = await axios.post(`${process.env.EBAY_BASE_URL}/sell/inventory/v1/offer`,
+    const offerResponse = await axios.post(`${getEbayApiBase()}/sell/inventory/v1/offer`,
       {
         sku: sku,
         marketplaceId: 'EBAY_US',
@@ -2743,7 +3490,7 @@ app.post('/api/listings/ebay', async (req, res) => {
     
     res.status(201).json(newListing);
   } catch (error) {
-    console.error('Error creating eBay listing:', error.response?.data || error.message);
+    logError('Create eBay listing', error, { req });
     res.status(500).json({ error: 'Failed to create eBay listing' });
   }
 });
@@ -2821,7 +3568,7 @@ app.post('/api/listings/facebook', async (req, res) => {
     
     res.status(201).json(newListing);
   } catch (error) {
-    console.error('Error creating Facebook listing:', error.response?.data || error.message);
+    logError('Create Facebook listing', error, { req });
     res.status(500).json({ error: 'Failed to create Facebook listing' });
   }
 });
@@ -2845,41 +3592,43 @@ app.delete('/api/listings/:id', async (req, res) => {
     
     res.json({ success: true, message: 'Listing removed' });
   } catch (error) {
-    console.error('Error deleting listing:', error.message);
+    logError('Delete listing', error, { req });
     res.status(500).json({ error: 'Failed to delete listing' });
   }
 });
 
-app.use((error, _req, res, next) => {
+app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   if (error?.status === 401) {
     return res.status(401).json({ error: error.message || 'Sign in required' });
   }
-  console.error(error);
+  logError('Unhandled request error', error, { req });
   return res.status(500).json({ error: 'Unexpected server error' });
 });
 
-// Start the server
-const server = app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  
-  // Open dashboard in browser
-  open(`http://localhost:${PORT}/dashboard.html`).catch(err => {
-    console.log('Could not open browser automatically');
-  });
-});
+export default app;
 
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-  console.log('Shutting down server...');
-  try {
-    persistStore();
-    userStore.db.close();
-  } catch (error) {
-    console.warn('Failed to persist session on shutdown:', error.message);
-  }
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
+if (!process.env.VERCEL) {
+  const server = app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    if (process.env.NODE_ENV !== 'production') {
+      open(`http://localhost:${PORT}/dashboard.html`).catch((error) => {
+        logError('Open browser', error);
+      });
+    }
   });
-});
+
+  process.on('SIGINT', () => {
+    console.log('Shutting down server...');
+    try {
+      persistStore();
+      userStore.db.close();
+    } catch (error) {
+      logError('Persist session on shutdown', error);
+    }
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  });
+}

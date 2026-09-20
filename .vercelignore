@@ -1,0 +1,12 @@
+data/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+.cursor
+vendoo-analysis
+extension
+server.log
+*.log

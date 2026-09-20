@@ -1,10 +1,13 @@
 import 'dotenv/config';
 import crypto from 'crypto';
+import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { DatabaseSync } from 'node:sqlite';
 import { v4 as uuidv4 } from 'uuid';
+
+const scrypt = promisify(crypto.scrypt);
 
 const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DATA_DIR = process.env.DATA_DIR
@@ -117,16 +120,16 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function hashPassword(password) {
+async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  const hash = (await scrypt(password, salt, 64)).toString('hex');
   return `${salt}:${hash}`;
 }
 
-function verifyPassword(password, stored) {
+async function verifyPassword(password, stored) {
   const [salt, hash] = String(stored || '').split(':');
   if (!salt || !hash) return false;
-  const next = crypto.scryptSync(password, salt, 64).toString('hex');
+  const next = (await scrypt(password, salt, 64)).toString('hex');
   const left = Buffer.from(hash, 'hex');
   const right = Buffer.from(next, 'hex');
   if (left.length !== right.length) return false;
@@ -150,7 +153,7 @@ export function parseCookies(req) {
   return out;
 }
 
-function cookieSecurity() {
+export function cookieSecurity() {
   const secure =
     process.env.VERCEL === '1' ||
     process.env.NODE_ENV === 'production' ||
@@ -426,7 +429,7 @@ export function dismissImageMatchPairs(userId, pairKeys) {
   }
 }
 
-export function createUser({ email, password, name }) {
+export async function createUser({ email, password, name }) {
   const normalized = String(email || '').trim().toLowerCase();
   if (!normalized || !normalized.includes('@')) {
     const error = new Error('Enter a valid email address');
@@ -448,12 +451,12 @@ export function createUser({ email, password, name }) {
   const created = nowIso();
   db.prepare(
     'INSERT INTO users (id, email, password_hash, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(id, normalized, hashPassword(password), String(name || '').trim(), created, created);
+  ).run(id, normalized, await hashPassword(password), String(name || '').trim(), created, created);
   claimLegacyStore(id);
   return loadUser(id);
 }
 
-export function authenticateUser(email, password) {
+export async function authenticateUser(email, password) {
   const normalized = String(email || '').trim().toLowerCase();
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get(normalized);
   if (row && String(row.password_hash || '').startsWith('oauth:')) {
@@ -461,7 +464,7 @@ export function authenticateUser(email, password) {
     error.status = 401;
     throw error;
   }
-  if (!row || !verifyPassword(password, row.password_hash)) {
+  if (!row || !(await verifyPassword(password, row.password_hash))) {
     const error = new Error('Invalid email or password');
     error.status = 401;
     throw error;
@@ -503,6 +506,13 @@ export function findOrCreateGoogleUser({ googleId, email, name }) {
       throw error;
     }
     const nextName = String(name || '').trim() || byEmail.name || '';
+    // Signup does not verify email ownership, so anyone could have pre-registered this
+    // address with a password they know. Linking Google proves ownership: drop the
+    // password and every existing session so only the Google identity can sign in.
+    if (!String(byEmail.password_hash || '').startsWith('oauth:')) {
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run('oauth:google', byEmail.id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(byEmail.id);
+    }
     db.prepare('UPDATE users SET google_id = ?, name = ?, updated_at = ? WHERE id = ?').run(
       sub,
       nextName,

@@ -20,8 +20,7 @@
     "https://www.poshmark.com/*",
     "https://www.etsy.com/*",
     "http://localhost/*",
-    "http://127.0.0.1/*",
-    "https://*.vercel.app/*"
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -31,8 +30,7 @@
     {
       "matches": [
         "http://localhost:3000/*",
-        "http://127.0.0.1:3000/*",
-        "https://*.vercel.app/*"
+        "http://127.0.0.1:3000/*"
       ],
       "js": ["content-dashboard.js"],
       "run_at": "document_start"
@@ -87,8 +85,7 @@
   "externally_connectable": {
     "matches": [
       "http://localhost:3000/*",
-      "http://127.0.0.1:3000/*",
-      "https://*.vercel.app/*"
+      "http://127.0.0.1:3000/*"
     ]
   },
   "action": {

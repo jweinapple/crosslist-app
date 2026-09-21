@@ -3112,6 +3112,8 @@ app.post('/api/listings/image-matches/resolve', (req, res) => {
 
 async function applyListingUpdates(listing, updates, userData) {
   const { platforms: platformUpdates, ...safeUpdates } = updates || {};
+  if ('category' in safeUpdates) safeUpdates.category = cleanCategory(safeUpdates.category);
+  if ('details' in safeUpdates) safeUpdates.details = cleanDetails(safeUpdates.details);
   let nextPlatforms = platformUpdates
     ? { ...getPlatforms(listing), ...platformUpdates }
     : getPlatforms(listing);
@@ -3202,8 +3204,28 @@ app.post(
   }
 );
 
+const LISTING_CATEGORIES = new Set(['clothing', 'furniture', 'home', 'tech', 'tickets', 'other']);
+
+function cleanCategory(value) {
+  const category = String(value || '').toLowerCase();
+  return LISTING_CATEGORIES.has(category) ? category : 'other';
+}
+
+// Free-form "details" (brand, model, seats, ...): a few short text values, nothing nested.
+function cleanDetails(value) {
+  const out = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return out;
+  for (const [key, raw] of Object.entries(value).slice(0, 12)) {
+    if (!/^[a-z][a-z0-9_]{0,29}$/i.test(key)) continue;
+    if (typeof raw !== 'string' && typeof raw !== 'number') continue;
+    const text = String(raw).trim().slice(0, 200);
+    if (text) out[key] = text;
+  }
+  return out;
+}
+
 app.post('/api/listings', (req, res) => {
-  const { title, description, price, quantity, images, platforms: requestedPlatforms, sku, condition } = req.body || {};
+  const { title, description, price, quantity, images, platforms: requestedPlatforms, sku, condition, category, details } = req.body || {};
   if (!title) {
     return res.status(400).json({ error: 'Title is required' });
   }
@@ -3231,6 +3253,8 @@ app.post('/api/listings', (req, res) => {
     images: imageList,
     sku: sku ? String(sku).trim() : '',
     condition: condition || 'used_good',
+    category: cleanCategory(category),
+    details: cleanDetails(details),
     status: 'draft',
     platforms,
     lastUpdated: new Date().toISOString(),

@@ -1087,6 +1087,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 chrome.runtime.onConnectExternal.addListener((port) => {
+  const origin = port.sender?.origin || '';
+  if (origin !== 'http://localhost:3000' && origin !== 'http://127.0.0.1:3000') {
+    port.disconnect();
+    return;
+  }
   port.onMessage.addListener(async (message) => {
     try {
       const result = await handleExtensionCommand(message.command, message.payload || {});

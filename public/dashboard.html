@@ -1888,12 +1888,13 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
     <div id="auth-gate" class="auth-gate">
         <div class="auth-card">
             <h1>Crosslist</h1>
-            <p id="auth-copy">Create an account to connect marketplaces. OAuth tokens and inventory stay on your user, not a shared demo login.</p>
+            <p id="auth-copy">Sell your items on eBay, Facebook, Etsy and more, all from one place.</p>
             <a id="google-auth-btn" class="btn btn-google" href="/api/auth/google">
                 <svg viewBox="0 0 18 18" aria-hidden="true">
                     <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
@@ -1914,7 +1915,7 @@
                 <label for="auth-password">Password</label>
                 <input id="auth-password" type="password" name="password" required minlength="8" autocomplete="new-password">
                 <div id="auth-error" class="auth-error"></div>
-                <button id="auth-submit" type="submit" class="btn btn-primary">Create account</button>
+                <button id="auth-submit" type="submit" class="btn btn-primary">Create my account</button>
                 <button id="auth-toggle" type="button" class="btn-link">Already have an account? Sign in</button>
             </form>
         </div>
@@ -1928,7 +1929,7 @@
                     <path d="M3 10 5.5 4h13L21 10" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
                     <path d="M10 20v-6h4v6" stroke="currentColor" stroke-width="2"/>
                 </svg>
-                Marketplaces
+                My Stores
             </button>
             <button type="button" class="nav-item active" data-section="items" id="nav-items">
                 <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1937,7 +1938,7 @@
                     <rect x="3" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
                     <rect x="14" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
                 </svg>
-                Inventory
+                My Items
             </button>
             <button type="button" class="nav-item" data-section="list" id="nav-list">
                 <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1946,7 +1947,7 @@
                     <path d="M5 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                     <path d="M16 15l3 3 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                Bulk listings
+                Add Items
             </button>
             <button type="button" class="nav-item" data-section="import" id="nav-import">
                 <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1954,7 +1955,7 @@
                     <path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
-                Bulk import
+                Bring In Listings
             </button>
             <div class="sidebar-user" id="sidebar-user" hidden>
                 <div id="sidebar-user-email" class="sidebar-user-email"></div>
@@ -1976,9 +1977,9 @@
                         <path d="M3 10 5.5 4h13L21 10" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
                         <path d="M10 20v-6h4v6" stroke="currentColor" stroke-width="2"/>
                     </svg>
-                    Marketplaces
+                    My Stores
                 </h1>
-                <p>Official app credentials open each store’s own sign-in page, where Google SSO works. Facebook Marketplace still uses the Chrome extension.</p>
+                <p>Link your accounts once, and we’ll post and update your items on every store for you.</p>
             </div>
             <div id="extension-banner" class="server-banner">
                 Facebook Marketplace uses the <strong>Crosslist Connector</strong> Chrome extension.
@@ -1995,20 +1996,20 @@
                             Not connected
                         </div>
                     </div>
-                    <p>Connect with official eBay OAuth. On eBay’s sign-in page you can Continue with Google. The Chrome extension can use your browser session instead.</p>
+                    <p>Link your eBay account so we can post and update your items for you.</p>
                     <div class="card-actions">
                         <button id="ebay-auth-btn" type="button" class="btn btn-primary">
-                            Connect eBay →
+                            Connect eBay
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="startBulkImport('ebay')">
-                            Import listings
+                            Bring in my listings
                         </button>
                         <button id="ebay-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
                             Disconnect
                         </button>
                     </div>
                     <button id="ebay-extension-btn" type="button" class="btn-link">
-                        Or connect with Chrome extension
+                        Trouble connecting? Try the Chrome helper
                     </button>
                 </article>
                 <article class="marketplace-card facebook">
@@ -2019,13 +2020,13 @@
                             Not connected
                         </div>
                     </div>
-                    <p>Facebook Marketplace has no public listing OAuth API. Connect with the Chrome extension using your existing Facebook login.</p>
+                    <p>Facebook needs a small Chrome add-on to connect. Click the button and follow the steps.</p>
                     <div class="card-actions">
                         <button id="facebook-auth-btn" type="button" class="btn btn-facebook">
-                            Connect with Chrome extension
+                            Connect Facebook
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="startBulkImport('facebook')">
-                            Import listings
+                            Bring in my listings
                         </button>
                         <button id="facebook-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
                             Disconnect
@@ -2040,20 +2041,20 @@
                             Not connected
                         </div>
                     </div>
-                    <p>Connect with official Depop OAuth. On Depop’s sign-in page you can Continue with Google. The Chrome extension can use your browser session instead.</p>
+                    <p>Link your Depop account so we can post and update your items for you.</p>
                     <div class="card-actions">
                         <button id="depop-auth-btn" type="button" class="btn btn-depop">
-                            Connect Depop →
+                            Connect Depop
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="startBulkImport('depop')">
-                            Import listings
+                            Bring in my listings
                         </button>
                         <button id="depop-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
                             Disconnect
                         </button>
                     </div>
                     <button id="depop-extension-btn" type="button" class="btn-link">
-                        Or connect with Chrome extension
+                        Trouble connecting? Try the Chrome helper
                     </button>
                 </article>
                 <article class="marketplace-card poshmark">
@@ -2064,7 +2065,7 @@
                             Not connected
                         </div>
                     </div>
-                    <p>Poshmark has no public OAuth API. Continue with Google uses your Poshmark Google SSO session in Chrome. Email and password still works for password accounts.</p>
+                    <p>Sign in with your Poshmark account so we can post and update your items for you.</p>
                     <div class="card-actions">
                         <button id="poshmark-google-btn" type="button" class="btn btn-google">
                             <svg viewBox="0 0 18 18" aria-hidden="true">
@@ -2076,7 +2077,7 @@
                             Continue with Google
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="startBulkImport('poshmark')">
-                            Import listings
+                            Bring in my listings
                         </button>
                         <button id="poshmark-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
                             Disconnect
@@ -2105,20 +2106,20 @@
                             Not connected
                         </div>
                     </div>
-                    <p>Connect with official Etsy OAuth. On Etsy’s sign-in page you can Continue with Google. The Chrome extension can use your browser session instead.</p>
+                    <p>Link your Etsy shop so we can post and update your items for you.</p>
                     <div class="card-actions">
                         <button id="etsy-auth-btn" type="button" class="btn btn-etsy">
-                            Connect Etsy →
+                            Connect Etsy
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="startBulkImport('etsy')">
-                            Import listings
+                            Bring in my listings
                         </button>
                         <button id="etsy-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
                             Disconnect
                         </button>
                     </div>
                     <button id="etsy-extension-btn" type="button" class="btn-link">
-                        Or connect with Chrome extension
+                        Trouble connecting? Try the Chrome helper
                     </button>
                 </article>
             </div>
@@ -2126,6 +2127,7 @@
 
         <section id="section-items" class="dashboard-section active" aria-labelledby="nav-items">
             <div class="inventory-chrome">
+                <div id="engage-root" hidden></div>
                 <div class="inventory-topbar">
                     <div class="inventory-topbar-left">
                         <span class="inventory-pill active">
@@ -2135,19 +2137,19 @@
                                 <rect x="3" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
                                 <rect x="14" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
                             </svg>
-                            Inventory
+                            My Items
                         </span>
                     </div>
                     <div class="inventory-topbar-actions">
-                        <button type="button" class="btn btn-add-item" onclick="showDashboardSection('list')">+ Add item</button>
-                        <button type="button" class="btn btn-secondary" onclick="showDashboardSection('list')">Bulk listings</button>
+                        <button type="button" class="btn btn-add-item" onclick="showDashboardSection('list')">+ Add an item</button>
+                        <button type="button" class="btn btn-secondary" onclick="showDashboardSection('list')">Add many at once</button>
                         <button type="button" class="btn btn-secondary" onclick="showDashboardSection('import')">
                             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                 <path d="M12 3v11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                                 <path d="M8 10l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                 <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                             </svg>
-                            Bulk import
+                            Bring in my listings
                         </button>
                     </div>
                 </div>
@@ -2167,10 +2169,10 @@
                     <div class="inventory-search-row">
                         <label class="inventory-search">
                             <span aria-hidden="true">⌕</span>
-                            <input id="inventory-search" type="search" placeholder="Search..." oninput="renderListings()">
+                            <input id="inventory-search" type="search" placeholder="Search your items" oninput="renderListings()">
                         </label>
                         <select id="inventory-sort" class="inventory-select" onchange="renderListings()">
-                            <option value="updated">Imported/created at</option>
+                            <option value="updated">Newest first</option>
                             <option value="title">Item name</option>
                             <option value="price">Price</option>
                         </select>
@@ -2190,21 +2192,30 @@
 
                 <div class="inventory-meta">
                     <div class="inventory-meta-left">
-                        <span id="inventory-last-synced">Not synced yet</span>
-                        <button type="button" class="inventory-resync" onclick="loadListings()">Resync</button>
+                        <span id="inventory-last-synced">Not refreshed yet</span>
+                        <button type="button" class="inventory-resync" onclick="loadListings()">Refresh</button>
                     </div>
                     <div class="inventory-filters">
                         <select id="inventory-marketplace-filter" class="inventory-select" onchange="renderListings()">
-                            <option value="all">Any marketplaces</option>
+                            <option value="all">All stores</option>
                             <option value="ebay">eBay</option>
                             <option value="facebook">Facebook</option>
                             <option value="depop">Depop</option>
                             <option value="poshmark">Poshmark</option>
                             <option value="etsy">Etsy</option>
                         </select>
+                        <select id="inventory-category-filter" class="inventory-select" onchange="renderListings()">
+                            <option value="all">All categories</option>
+                            <option value="clothing">Clothing &amp; shoes</option>
+                            <option value="furniture">Furniture</option>
+                            <option value="home">Home &amp; decor</option>
+                            <option value="tech">Phones &amp; tech</option>
+                            <option value="tickets">Event tickets</option>
+                            <option value="other">Something else</option>
+                        </select>
                         <select id="inventory-issues-filter" class="inventory-select" onchange="renderListings()">
-                            <option value="all">Any issues</option>
-                            <option value="price">Price inconsistency</option>
+                            <option value="all">Everything</option>
+                            <option value="price">Prices that don’t match</option>
                         </select>
                     </div>
                 </div>
@@ -2248,9 +2259,9 @@
                         <path d="M5 17h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                         <path d="M16 15l3 3 3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    Bulk listings
+                    Add Items
                 </h1>
-                <p>Upload one item into inventory, then push it to every connected store. Demo stores list immediately. Live stores open a prefilled listing form in Chrome so you can review and publish.</p>
+                <p>Add photos and a price once, then choose which stores to post it on.</p>
             </div>
             <div class="bulk-list-layout">
                 <div class="bulk-photo-card">
@@ -2265,17 +2276,24 @@
                 </div>
                 <div class="bulk-details-card">
                     <div class="form-group">
-                        <label for="bulk-item-title">Title</label>
-                        <input type="text" id="bulk-item-title" placeholder="Item title">
+                        <label for="bulk-item-category">What are you selling?</label>
+                        <select id="bulk-item-category" class="inventory-select"></select>
                     </div>
                     <div class="form-group">
-                        <label for="bulk-item-description">Description</label>
-                        <textarea id="bulk-item-description" placeholder="Item description"></textarea>
+                        <label for="bulk-item-title">Title</label>
+                        <input type="text" id="bulk-item-title" placeholder="Item title">
                     </div>
                     <div class="form-group">
                         <label for="bulk-item-price">Price ($)</label>
                         <input type="number" id="bulk-item-price" placeholder="0.00" step="0.01" min="0">
                     </div>
+                    <details class="more-details">
+                        <summary>Add more details (optional)</summary>
+                    <div class="form-group">
+                        <label for="bulk-item-description">Description</label>
+                        <textarea id="bulk-item-description" placeholder="Item description"></textarea>
+                    </div>
+                    <div id="bulk-item-details"></div>
                     <div class="form-group">
                         <label for="bulk-item-quantity">Quantity</label>
                         <input type="number" id="bulk-item-quantity" placeholder="1" min="0" value="1">
@@ -2289,6 +2307,7 @@
                             <option value="used_fair">Used — fair</option>
                         </select>
                     </div>
+                    </details>
                     <div class="form-group">
                         <label>Push to stores</label>
                         <div id="bulk-store-grid" class="bulk-store-grid"></div>
@@ -2587,9 +2606,9 @@
             const isSignup = mode === 'signup';
             document.getElementById('auth-name-field').hidden = !isSignup;
             document.getElementById('auth-copy').textContent = isSignup
-                ? 'Create an account to connect marketplaces. OAuth tokens and inventory stay on your user, not a shared demo login.'
-                : 'Sign in to your Crosslist account to manage your marketplace connections.';
-            document.getElementById('auth-submit').textContent = isSignup ? 'Create account' : 'Sign in';
+                ? 'Sell your items on eBay, Facebook, Etsy and more, all from one place.'
+                : 'Welcome back! Sign in to see your items and stores.';
+            document.getElementById('auth-submit').textContent = isSignup ? 'Create my account' : 'Sign in';
             document.getElementById('auth-toggle').textContent = isSignup
                 ? 'Already have an account? Sign in'
                 : 'Need an account? Create one';
@@ -3016,6 +3035,7 @@
             const query = inventorySearchQuery();
             const marketplace = document.getElementById('inventory-marketplace-filter')?.value || 'all';
             const issues = document.getElementById('inventory-issues-filter')?.value || 'all';
+            const category = document.getElementById('inventory-category-filter')?.value || 'all';
             const sort = document.getElementById('inventory-sort')?.value || 'updated';
             const rows = inventoryList().filter((listing) => {
                 const bucket = itemStatusBucket(listing);
@@ -3024,12 +3044,14 @@
                 if (inventoryTab === 'drafts' && bucket !== 'drafts') return false;
                 if (marketplace !== 'all' && !isListedOnPlatform(listing, marketplace)) return false;
                 if (issues === 'price' && !listingHasPriceInconsistency(listing)) return false;
+                if (category !== 'all' && (listing.category || 'other') !== category) return false;
                 if (query) {
                     const haystack = [
                         listing.title,
                         listing.sku,
                         listing.id,
                         listing.description,
+                        ...Object.values(listing.details || {}),
                     ].join(' ').toLowerCase();
                     if (!haystack.includes(query)) return false;
                 }
@@ -3050,14 +3072,14 @@
         }
 
         function formatSyncedAt(date) {
-            if (!date) return 'Not synced yet';
+            if (!date) return 'Not refreshed yet';
             const formatted = date.toLocaleString(undefined, {
                 month: 'long',
                 day: 'numeric',
                 hour: 'numeric',
                 minute: '2-digit',
             });
-            return `Last synced ${formatted}`;
+            return `Last updated ${formatted}`;
         }
 
         function hangerSvg() {
@@ -4317,10 +4339,10 @@
             if (connected) {
                 badge.className = 'auth-badge connected';
                 badge.innerHTML = '<span class="dot"></span> Connected';
-                if (mode === 'live') btn.textContent = 'Connected (OAuth) ✓';
-                else if (mode === 'password') btn.textContent = 'Connected (password) ✓';
-                else if (mode === 'extension') btn.textContent = platform === 'poshmark' ? 'Connected (Google) ✓' : 'Connected (extension) ✓';
-                else if (mode === 'demo') btn.textContent = 'Connected (demo) ✓';
+                if (mode === 'live') btn.textContent = 'Connected ✓';
+                else if (mode === 'password') btn.textContent = 'Connected ✓';
+                else if (mode === 'extension') btn.textContent = 'Connected ✓';
+                else if (mode === 'demo') btn.textContent = 'Connected ✓';
                 else btn.textContent = 'Connected ✓';
                 btn.disabled = true;
                 if (disconnectBtn) disconnectBtn.hidden = false;
@@ -4340,8 +4362,8 @@
                 btn.textContent = platform === 'poshmark'
                     ? 'Sign in'
                     : platform === 'facebook'
-                        ? 'Connect with Chrome extension'
-                        : `Connect ${label} →`;
+                        ? 'Connect Facebook'
+                        : `Connect ${label}`;
                 btn.disabled = false;
                 if (disconnectBtn) disconnectBtn.hidden = true;
                 if (extensionBtn) extensionBtn.hidden = false;
@@ -4446,7 +4468,7 @@
             tbody.innerHTML = rows.map((listing) => {
                 const sku = listing.sku ? `SKU: ${escapeHtml(listing.sku)}` : '';
                 const flag = listingHasPriceInconsistency(listing)
-                    ? `<div class="inv-price-flag">⚠ Price inconsistency</div>`
+                    ? `<div class="inv-price-flag">⚠ Prices don’t match</div>`
                     : '';
                 const cells = INVENTORY_PLATFORMS.map((platform) =>
                     `<td class="mkt-col">${marketplaceCellHtml(listing, platform.id)}</td>`
@@ -4459,6 +4481,7 @@
                                    onchange="toggleSelect('${listing.id}', this.checked)">
                             <div class="inv-item-copy">
                                 <div class="inv-item-title">${escapeHtml(listing.title)}</div>
+                                ${listing.category && listing.category !== 'other' && typeof categoryLabel === 'function' ? `<div class="inv-category">${escapeHtml(categoryLabel(listing.category))}</div>` : ''}
                                 ${sku ? `<div class="inv-item-sku">${sku}</div>` : ''}
                                 ${flag}
                             </div>
@@ -4769,5 +4792,7 @@
             }
         });
     </script>
+    <script src="/categories.js"></script>
+    <script src="/engage.js"></script>
 </body>
 </html>

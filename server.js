@@ -19,7 +19,29 @@ if (process.env.VERCEL) {
 }
 
 // Middleware
-app.use(cors({ origin: true, credentials: true }));
+// Only this app's own origins may make credentialed cross-origin requests.
+// Add more (comma-separated) with CORS_ORIGINS.
+function allowedOrigins() {
+  return new Set([
+    BASE_URL,
+    `http://localhost:${PORT}`,
+    `http://127.0.0.1:${PORT}`,
+    ...String(process.env.CORS_ORIGINS || '')
+      .split(',')
+      .map((origin) => origin.trim().replace(/\/$/, ''))
+      .filter(Boolean),
+  ]);
+}
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // No Origin header = same-origin navigation or a non-browser client.
+      callback(null, !origin || allowedOrigins().has(origin));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -1587,9 +1609,36 @@ app.get('/api/auth/me', (req, res) => {
   });
 });
 
-app.post('/api/auth/signup', (req, res) => {
+// In-memory fixed-window limiter. Fine for one process; use a shared store if you scale out.
+const rateBuckets = new Map();
+
+function rateLimitHit(key, max, windowMs) {
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || bucket.resetAt <= now) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return 0;
+  }
+  bucket.count += 1;
+  return bucket.count > max ? Math.ceil((bucket.resetAt - now) / 1000) : 0;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateBuckets) if (bucket.resetAt <= now) rateBuckets.delete(key);
+}, 60 * 1000).unref();
+
+function rejectIfLimited(res, retryAfter) {
+  if (!retryAfter) return false;
+  res.set('Retry-After', String(retryAfter));
+  res.status(429).json({ error: 'Too many attempts. Try again later.' });
+  return true;
+}
+
+app.post('/api/auth/signup', async (req, res) => {
+  if (rejectIfLimited(res, rateLimitHit(`signup:${req.ip}`, 10, 60 * 60 * 1000))) return;
   try {
-    const user = userStore.createUser({
+    const user = await userStore.createUser({
       email: req.body?.email,
       password: req.body?.password,
       name: req.body?.name,
@@ -1606,9 +1655,18 @@ app.post('/api/auth/signup', (req, res) => {
   }
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
+  const emailKey = String(req.body?.email || '').trim().toLowerCase().slice(0, 254);
+  const windowMs = 15 * 60 * 1000;
+  if (
+    rejectIfLimited(res, rateLimitHit(`login-ip:${req.ip}`, 30, windowMs)) ||
+    rejectIfLimited(res, rateLimitHit(`login-email:${emailKey}`, 10, windowMs))
+  ) {
+    return;
+  }
   try {
-    const user = userStore.authenticateUser(req.body?.email, req.body?.password);
+    const user = await userStore.authenticateUser(req.body?.email, req.body?.password);
+    rateBuckets.delete(`login-email:${emailKey}`);
     const sessionId = userStore.createSession(user.id);
     userStore.setSessionCookie(res, sessionId);
     return res.json({
@@ -1627,12 +1685,16 @@ app.post('/api/auth/logout', (req, res) => {
   return res.json({ authenticated: false });
 });
 
+const GOOGLE_STATE_COOKIE = 'crosslist_google_state';
+
 app.get('/api/auth/google', (req, res) => {
   if (!googleLiveMode) {
     return res.redirect('/dashboard.html?authError=google-config');
   }
   const state = uuidv4();
   userStore.saveOAuthState(state, '', 'google');
+  // Bind the flow to this browser so a callback URL can't be replayed in someone else's.
+  res.append('Set-Cookie', `${GOOGLE_STATE_COOKIE}=${state}; ${userStore.cookieSecurity()}; Max-Age=600`);
   const authUrl =
     'https://accounts.google.com/o/oauth2/v2/auth?' +
     new URLSearchParams({
@@ -1651,8 +1713,10 @@ app.get('/api/auth/google/callback', async (req, res) => {
   if (error || !code) {
     return res.redirect('/dashboard.html?authError=google');
   }
+  const stateCookie = userStore.parseCookies(req)[GOOGLE_STATE_COOKIE];
+  res.append('Set-Cookie', `${GOOGLE_STATE_COOKIE}=; ${userStore.cookieSecurity()}; Max-Age=0`);
   const oauth = userStore.consumeOAuthState(String(state || ''));
-  if (!oauth || oauth.platform !== 'google') {
+  if (!oauth || oauth.platform !== 'google' || !stateCookie || stateCookie !== String(state)) {
     return res.redirect('/dashboard.html?authError=google');
   }
 
@@ -3048,6 +3112,8 @@ app.post('/api/listings/image-matches/resolve', (req, res) => {
 
 async function applyListingUpdates(listing, updates, userData) {
   const { platforms: platformUpdates, ...safeUpdates } = updates || {};
+  if ('category' in safeUpdates) safeUpdates.category = cleanCategory(safeUpdates.category);
+  if ('details' in safeUpdates) safeUpdates.details = cleanDetails(safeUpdates.details);
   let nextPlatforms = platformUpdates
     ? { ...getPlatforms(listing), ...platformUpdates }
     : getPlatforms(listing);
@@ -3138,8 +3204,28 @@ app.post(
   }
 );
 
+const LISTING_CATEGORIES = new Set(['clothing', 'furniture', 'home', 'tech', 'tickets', 'other']);
+
+function cleanCategory(value) {
+  const category = String(value || '').toLowerCase();
+  return LISTING_CATEGORIES.has(category) ? category : 'other';
+}
+
+// Free-form "details" (brand, model, seats, ...): a few short text values, nothing nested.
+function cleanDetails(value) {
+  const out = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return out;
+  for (const [key, raw] of Object.entries(value).slice(0, 12)) {
+    if (!/^[a-z][a-z0-9_]{0,29}$/i.test(key)) continue;
+    if (typeof raw !== 'string' && typeof raw !== 'number') continue;
+    const text = String(raw).trim().slice(0, 200);
+    if (text) out[key] = text;
+  }
+  return out;
+}
+
 app.post('/api/listings', (req, res) => {
-  const { title, description, price, quantity, images, platforms: requestedPlatforms, sku, condition } = req.body || {};
+  const { title, description, price, quantity, images, platforms: requestedPlatforms, sku, condition, category, details } = req.body || {};
   if (!title) {
     return res.status(400).json({ error: 'Title is required' });
   }
@@ -3167,6 +3253,8 @@ app.post('/api/listings', (req, res) => {
     images: imageList,
     sku: sku ? String(sku).trim() : '',
     condition: condition || 'used_good',
+    category: cleanCategory(category),
+    details: cleanDetails(details),
     status: 'draft',
     platforms,
     lastUpdated: new Date().toISOString(),

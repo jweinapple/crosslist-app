@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sell anything · Crosslist</title>
+<style>
+  :root {
+    --navy: #0b1437; --blue: #1f5cff; --blue-dark: #1747d1; --blue-soft: #eaf0ff;
+    --amber: #ffb800; --amber-dark: #f2a900;
+    --ink: #131a33; --ink-2: #4a5578; --line: #dfe5f3; --line-2: #c6d0ea; --page: #f4f6fb;
+    --good: #0a7a43; --good-soft: #e1f6ea; --warn: #8a5a00; --warn-soft: #fff1d3;
+    --shadow-sm: 0 1px 2px rgba(11,20,55,.06), 0 2px 8px rgba(11,20,55,.05);
+    --shadow-md: 0 4px 14px rgba(11,20,55,.08), 0 12px 32px rgba(11,20,55,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif; font-size: 16px; line-height: 1.55; color: var(--ink); background: var(--page); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3 { color: var(--navy); letter-spacing: -0.025em; line-height: 1.12; }
+  a { color: inherit; }
+  button { font: inherit; }
+  :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
+  .wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+  /* header */
+  .bar { position: sticky; top: 0; z-index: 50; background: var(--navy); box-shadow: 0 4px 18px rgba(11,20,55,.25); }
+  .bar .wrap { display: flex; align-items: center; gap: 6px; min-height: 72px; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-right: 22px; font-size: 24px; font-weight: 800; letter-spacing: -0.03em; color: #fff; text-decoration: none; }
+  .brand::before { content: ""; width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, var(--blue), #7c4dff); box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
+  .bar nav { display: flex; gap: 6px; }
+  .bar nav a { padding: 11px 18px; border-radius: 999px; font-weight: 700; color: rgba(255,255,255,.78); text-decoration: none; white-space: nowrap; }
+  .bar nav a:hover { background: rgba(255,255,255,.12); color: #fff; }
+  .bar nav a[aria-current] { background: #fff; color: var(--navy); }
+  .bar .signin { margin-left: auto; padding: 10px 18px; border: 1.5px solid rgba(255,255,255,.4); border-radius: 12px; font-weight: 700; color: #fff; text-decoration: none; }
+  .bar .signin:hover { background: rgba(255,255,255,.14); border-color: #fff; }
+
+  /* hero */
+  .hero { color: #fff; background: radial-gradient(700px 360px at 88% -10%, rgba(124,77,255,.5), transparent 60%), radial-gradient(600px 360px at 0% 110%, rgba(31,92,255,.5), transparent 60%), var(--navy); }
+  .hero .wrap { padding-top: 56px; padding-bottom: 64px; display: grid; grid-template-columns: 1fr 480px; gap: 56px; align-items: start; }
+  .hero .wrap > div:first-child { position: sticky; top: 110px; padding-top: 48px; }
+  .eyebrow { font-size: 15px; font-weight: 700; color: rgba(255,255,255,.72); margin-bottom: 14px; }
+  .hero h1 { font-size: clamp(38px, 5.2vw, 62px); font-weight: 800; color: #fff; letter-spacing: -0.035em; }
+  .hero p.lede { margin-top: 18px; font-size: 22px; line-height: 1.45; color: rgba(255,255,255,.86); max-width: 460px; }
+  .assure { margin-top: 26px; display: grid; gap: 10px; list-style: none; }
+  .assure li { display: flex; align-items: center; gap: 12px; font-size: 17px; font-weight: 600; color: rgba(255,255,255,.9); }
+  .assure li::before { content: ""; flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Cpath d='M6 11.5l3.2 3.2L16 7.8' fill='none' stroke='%230b1437' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% no-repeat; }
+
+  /* the lister card */
+  .lister { background: #fff; color: var(--ink); border-radius: 28px; padding: 24px; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+  .lister-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .lister-top b { font-size: 15px; font-weight: 800; color: var(--navy); }
+  .dots { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--ink-2); }
+  .dots i { width: 26px; height: 6px; border-radius: 999px; background: var(--line); transition: background .3s; }
+  .dots i.on { background: var(--blue); }
+
+  .preview { border: 1.5px solid var(--line); border-radius: 20px; overflow: hidden; background: #fff; }
+  .shot { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 10; background: #eef2fb; cursor: pointer; overflow: hidden; }
+  .shot input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .shot .empty { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 16px; color: var(--blue-dark); pointer-events: none; }
+  .shot .empty svg { width: 46px; height: 46px; }
+  .shot .empty strong { font-size: 19px; color: var(--navy); }
+  .shot .empty span { font-size: 14px; color: var(--ink-2); }
+  .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .shot.has-photo .empty { display: none; }
+  .shot.drag { outline: 3px dashed var(--blue); outline-offset: -10px; background: var(--blue-soft); }
+  .meta { padding: 14px 16px 16px; }
+  .meta .t { font-size: 18px; font-weight: 800; color: var(--navy); line-height: 1.25; min-height: 1.25em; }
+  .meta .t.ph { color: #b3bcd6; }
+  .meta .p { margin-top: 2px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--navy); }
+  .meta .p.ph { color: #b3bcd6; }
+  .where { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 28px; font-size: 13px; color: var(--ink-2); }
+  .where .tag { padding: 3px 11px; border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 700; }
+  .where .tag.soon { background: #eef1fa; color: var(--ink-2); }
+
+  .field { margin-top: 14px; }
+  .field[hidden] { display: none; }
+  .field label { display: block; margin-bottom: 6px; font-size: 15px; font-weight: 800; color: var(--navy); }
+  .field .in { position: relative; }
+  .field input[type="text"], .field input[type="number"] { width: 100%; height: 54px; padding: 0 16px; font: inherit; font-size: 18px; color: var(--ink); background: #fff; border: 2px solid var(--line-2); border-radius: 14px; }
+  .field input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px rgba(31,92,255,.16); }
+  .field .cur { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 18px; font-weight: 700; color: var(--ink-2); }
+  .field .in.money input { padding-left: 34px; }
+  .field.reveal { animation: up .35s cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .detected { margin-top: 8px; min-height: 22px; font-size: 14px; color: var(--ink-2); }
+  .detected b { margin-left: 4px; padding: 2px 10px; border-radius: 999px; background: var(--blue-soft); color: var(--blue-dark); font-weight: 700; }
+
+  .go { width: 100%; margin-top: 18px; height: 60px; border: none; border-radius: 16px; background: var(--amber); color: var(--navy); font-size: 19px; font-weight: 800; cursor: pointer; box-shadow: 0 1px 0 var(--amber-dark), 0 6px 16px rgba(0,0,0,.16); transition: background .15s, transform .12s; }
+  .go:hover { background: #ffc61f; transform: translateY(-1px); }
+  .go.wide { width: auto; padding: 0 30px; margin-top: 0; }
+  .fine { margin-top: 10px; text-align: center; font-size: 13px; color: var(--ink-2); }
+
+  .take { margin-top: 16px; padding: 14px 16px; border-radius: 16px; background: var(--good-soft); color: #0b3d24; }
+  .take[hidden] { display: none; }
+  .take.reveal { animation: up .35s cubic-bezier(.2,.7,.2,1) both; }
+  .take h4 { font-size: 14px; font-weight: 800; letter-spacing: .01em; color: var(--good); margin-bottom: 8px; }
+  .take .row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 15px; }
+  .take .row + .row { border-top: 1px solid rgba(10,122,67,.18); }
+  .take .row b { font-size: 19px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .take .row small { display: block; font-size: 12.5px; color: #2f6b4b; }
+  .take .row.best b::after { content: "Best"; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--good); color: #fff; font-size: 11px; font-weight: 800; vertical-align: 2px; }
+  .take .fine2 { margin-top: 8px; font-size: 12.5px; color: #2f6b4b; }
+  .keep { margin-top: 2px; font-size: 14px; font-weight: 700; color: var(--good); min-height: 1.2em; }
+
+  .demo { display: grid; grid-template-columns: 1.15fr 1fr; gap: 28px; align-items: start; }
+  .dash { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow-md); padding: 24px; }
+  .dash .flag { position: absolute; top: 18px; right: 18px; padding: 4px 12px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .dash .who { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; padding-right: 90px; }
+  .dash .who .img { flex: none; width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, #cfd9f5, #e9edfa); }
+  .dash .who b { display: block; font-size: 17px; color: var(--navy); }
+  .dash .who span { font-size: 14px; color: var(--ink-2); }
+  .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .kpi { padding: 16px; border-radius: 16px; background: var(--page); }
+  .kpi b { display: block; font-size: 30px; font-weight: 800; letter-spacing: -0.03em; color: var(--navy); line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .kpi span { font-size: 14px; font-weight: 600; color: var(--ink-2); }
+  .dash .cap { margin-top: 14px; font-size: 13.5px; color: var(--ink-2); }
+  .facts { display: grid; gap: 22px; }
+  .facts h3 { font-size: 19px; font-weight: 800; margin-bottom: 4px; }
+  .facts p { color: var(--ink-2); }
+
+  section { padding: 72px 0; }
+  .head { max-width: 680px; margin-bottom: 36px; }
+  .head h2 { font-size: clamp(28px, 3.4vw, 40px); font-weight: 800; }
+  .head p { margin-top: 12px; font-size: 18px; color: var(--ink-2); }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .step { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 28px; box-shadow: var(--shadow-sm); }
+  .step .n { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 18px; border-radius: 12px; background: var(--navy); color: #fff; font-weight: 800; }
+  .step h3 { font-size: 21px; font-weight: 800; margin-bottom: 8px; }
+  .step p { color: var(--ink-2); }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .tile { display: flex; flex-direction: column; gap: 10px; padding: 26px; text-align: left; color: inherit; background: #fff; border: 2px solid var(--line); border-radius: 22px; box-shadow: var(--shadow-sm); cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s; }
+  .tile:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--blue); }
+  .tile[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); }
+  .tile svg { width: 44px; height: 44px; color: var(--blue); }
+  .tile h3 { font-size: 21px; font-weight: 800; }
+  .tile .eg { color: var(--ink-2); font-size: 15px; }
+  .tile .best { margin-top: auto; padding-top: 6px; font-size: 14px; font-weight: 700; color: var(--navy); }
+
+  .stores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .store { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 24px; box-shadow: var(--shadow-sm); transition: opacity .25s, border-color .15s; }
+  .store h3 { font-size: 21px; font-weight: 800; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .store p { margin-top: 10px; color: var(--ink-2); font-size: 15.5px; }
+  .store .tags { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tg { padding: 3px 11px; border-radius: 999px; background: #eef1fa; color: var(--ink-2); font-size: 13px; font-weight: 700; }
+  .badge { padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+  .badge.live { background: var(--good-soft); color: var(--good); }
+  .badge.soon { background: var(--warn-soft); color: var(--warn); }
+  .store.dim { opacity: .38; }
+  .store.match { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(31,92,255,.14), var(--shadow-sm); }
+  .note { margin-top: 20px; font-size: 15px; color: var(--ink-2); }
+
+  .points { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .point h3 { font-size: 19px; font-weight: 800; margin-bottom: 6px; }
+  .point p { color: var(--ink-2); }
+  .cta { background: var(--navy); }
+  .cta .wrap { display: flex; align-items: center; justify-content: space-between; gap: 32px; flex-wrap: wrap; padding-top: 56px; padding-bottom: 56px; }
+  .cta h2 { color: #fff; font-size: clamp(28px, 3.4vw, 40px); font-weight: 800; max-width: 620px; }
+  footer { padding: 28px 0 40px; font-size: 14px; color: var(--ink-2); }
+
+  @media (max-width: 960px) {
+    .hero .wrap { grid-template-columns: 1fr; gap: 32px; padding-top: 36px; padding-bottom: 44px; }
+    .hero p.lede { font-size: 19px; }
+    .hero .wrap > div:first-child { position: static; padding-top: 0; }
+    .assure { display: none; }
+    .steps, .tiles, .stores, .points, .demo { grid-template-columns: 1fr; }
+    section { padding: 52px 0; }
+    .bar .wrap { flex-wrap: wrap; padding-top: 10px; padding-bottom: 10px; min-height: 0; }
+    .bar nav { order: 3; width: 100%; }
+    .bar nav a { flex: 1; text-align: center; padding: 10px 6px; font-size: 14px; }
+    .brand { margin-right: 0; }
+  }
+  @media (max-width: 520px) { .wrap { padding: 0 16px; } .lister { padding: 18px; } .go.wide { width: 100%; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="/sell.html">Crosslist</a>
+    <nav aria-label="Main">
+      <a href="/sell.html" aria-current="page">Sell</a>
+      <a href="/dashboard.html#items">My Items</a>
+      <a href="/dashboard.html#marketplaces">My Stores</a>
+    </nav>
+    <a class="signin" href="/dashboard.html">Sign in</a>
+  </div>
+</header>
+
+<main>
+  <div class="hero" id="top">
+    <div class="wrap">
+      <div>
+        <div class="eyebrow">It only takes a minute</div>
+        <h1>Got stuff to sell?<br>Let’s get it listed.</h1>
+        <p class="lede">Start with a photo. That’s all we need to begin.</p>
+        <ul class="assure">
+          <li>No long forms</li>
+          <li>You approve everything before it goes live</li>
+          <li>Tickets, furniture, phones, clothes and more</li>
+        </ul>
+      </div>
+
+      <form class="lister" id="lister" autocomplete="off">
+        <div class="lister-top"><b>Your listing</b><div class="dots" aria-live="polite"><i></i><i></i><i></i><span id="stepnum">1 of 3</span></div></div>
+
+        <div class="preview">
+          <label class="shot" id="shot">
+            <input id="photo" type="file" accept="image/*">
+            <div class="empty">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.5l1.2-1.6A1 1 0 0 1 9.5 4h5a1 1 0 0 1 .8.4L16.5 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
+              <strong>Add a photo</strong>
+              <span>Take one now or choose one you already have</span>
+            </div>
+          </label>
+          <div class="meta">
+            <div class="t ph" id="pv-title">Your item</div>
+            <div class="p ph" id="pv-price">$0</div>
+            <div class="keep" id="pv-keep"></div>
+            <div class="where" id="pv-where"></div>
+          </div>
+        </div>
+
+        <div class="field" id="f-title" hidden>
+          <label for="title">What is it?</label>
+          <div class="in"><input id="title" type="text" placeholder="iPhone 14 Pro, 256 GB"></div>
+          <div class="detected" id="detected" aria-live="polite"></div>
+        </div>
+        <div class="field" id="f-price" hidden>
+          <label for="price">Your price</label>
+          <div class="in money"><span class="cur">$</span><input id="price" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></div>
+        </div>
+
+        <div class="take" id="take" hidden></div>
+        <button class="go" type="submit" id="go">Add a photo to begin</button>
+        <div class="fine">Nothing is posted until you say so.</div>
+      </form>
+    </div>
+  </div>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="head"><h2>Three easy steps</h2><p>Most items take about a minute.</p></div>
+      <div class="steps">
+        <div class="step"><div class="n">1</div><h3>Snap a photo</h3><p>Use your phone or pick one you already have.</p></div>
+        <div class="step"><div class="n">2</div><h3>Say what it is and the price</h3><p>A few words and a number. That’s it.</p></div>
+        <div class="step"><div class="n">3</div><h3>Choose where it goes</h3><p>We show the sites that fit your item. You press Post.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="categories" style="padding-top:0">
+    <div class="wrap">
+      <div class="head"><h2>Sell almost anything</h2><p>Tap a category to see where it does best.</p></div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+  </section>
+
+  <section id="where" style="padding-top:0">
+    <div class="wrap">
+      <div class="head"><h2 id="where-title">Where it can go</h2><p id="where-sub">Tap a category above to see which sites fit it best.</p></div>
+      <div class="stores" id="stores"></div>
+      <p class="note">Some sites are still being connected. They’re marked “Coming soon” so you always know what works today.</p>
+    </div>
+  </section>
+
+  <section id="after" style="padding-top:0">
+    <div class="wrap">
+      <div class="head"><h2>Know how it’s doing</h2><p>Once an item is live, this is where you’ll see what’s happening with it.</p></div>
+      <div class="demo">
+        <div class="dash" aria-label="Example of the item summary">
+          <span class="flag">Example</span>
+          <div class="who"><div class="img" aria-hidden="true"></div><div><b>Oak dresser, 6 drawers</b><span>Listed on 2 sites</span></div></div>
+          <div class="kpis">
+            <div class="kpi"><b>128</b><span>People who’ve looked</span></div>
+            <div class="kpi"><b>9</b><span>Saved it</span></div>
+            <div class="kpi"><b>2</b><span>Offers</span></div>
+            <div class="kpi"><b>$310</b><span>Similar items sold for</span></div>
+          </div>
+          <p class="cap">Sample numbers to show the idea. Yours will come from the sites where you list.</p>
+        </div>
+        <div class="facts">
+          <div><h3>What you’ll take home</h3><p>Before you post, we show an estimate of what you’d keep after each site’s fees, so there are no surprises.</p></div>
+          <div><h3>How you get paid</h3><p>Buyers pay through each site’s own checkout, and the site pays you out. Local sales, like Facebook pickups, are usually settled in person.</p></div>
+          <div><h3>What similar items sold for</h3><p>We’re working on showing recent sale prices next to your price, so you can choose one with confidence.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="wrap">
+      <div class="points">
+        <div class="point"><h3>You’re in control</h3><p>You choose where each item goes. Nothing posts until you approve it.</p></div>
+        <div class="point"><h3>One list for everything</h3><p>See what’s listed where at a glance, without spreadsheets or a dozen tabs.</p></div>
+        <div class="point"><h3>Made to be simple</h3><p>Big buttons, plain words, and only a few clicks from start to finish.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta"><div class="wrap"><h2>Your stuff is worth more than it’s doing in a closet.</h2><button class="go wide" type="button" id="cta-go">Start with a photo &rarr;</button></div></div>
+</main>
+
+<footer><div class="wrap">Preview: StubHub, Ticketmaster and Chairish are planned and not connected yet. Store names belong to their respective owners.</div></footer>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var CATS = [
+    { id: 'tickets',   label: 'Event tickets',    eg: 'Concerts, sports, theater',         best: ['stubhub', 'ticketmaster', 'ebay'],
+      icon: '<path d="M4 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8Z"/><path d="M14 6v12" stroke-dasharray="2 2.5"/>' },
+    { id: 'furniture', label: 'Furniture',        eg: 'Sofas, tables, dressers, desks',    best: ['facebook', 'chairish', 'ebay'],
+      icon: '<path d="M5 11V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v3"/><path d="M3 13a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v4H3v-4Z"/><path d="M6 17v2M18 17v2"/>' },
+    { id: 'home',      label: 'Home & decor',     eg: 'Lamps, rugs, art, kitchenware',     best: ['chairish', 'facebook', 'ebay'],
+      icon: '<path d="M9 3h6l1.5 6h-9L9 3Z"/><path d="M12 9v9"/><path d="M8 21h8"/>' },
+    { id: 'tech',      label: 'Phones & tech',    eg: 'iPhones, laptops, accessories',     best: ['ebay', 'facebook'],
+      icon: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>' },
+    { id: 'clothing',  label: 'Clothing & shoes', eg: 'Jackets, jeans, sneakers, bags',    best: ['poshmark', 'ebay', 'facebook'],
+      icon: '<path d="M12 6a2 2 0 1 0-2-2"/><path d="M12 6v2l8 5a1.5 1.5 0 0 1-.8 2.8H4.8A1.5 1.5 0 0 1 4 13l8-5"/>' },
+    { id: 'other',     label: 'Something else',   eg: 'Books, toys, collectibles, tools',  best: ['ebay', 'facebook'],
+      icon: '<path d="M4 8l8-4 8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/>' }
+  ];
+  var STORES = [
+    { id: 'ebay',         name: 'eBay',                 live: true,  blurb: 'A huge audience for almost anything, shipped anywhere.', tags: ['Almost anything'] },
+    { id: 'facebook',     name: 'Facebook Marketplace', live: true,  blurb: 'Great for bulky things people pick up locally.',        tags: ['Furniture', 'Home', 'Tech'] },
+    { id: 'poshmark',     name: 'Poshmark',             live: true,  blurb: 'Built around fashion, with shoppers who love a deal.',  tags: ['Clothing', 'Shoes', 'Accessories'] },
+    { id: 'stubhub',      name: 'StubHub',              live: false, blurb: 'A marketplace made for buying and selling event tickets.', tags: ['Tickets'] },
+    { id: 'ticketmaster', name: 'Ticketmaster',         live: false, blurb: 'Resale for events. Their transfer rules apply, so check them first.', tags: ['Tickets'] },
+    { id: 'chairish',     name: 'Chairish',             live: false, blurb: 'Vintage and design-minded furniture and decor.',        tags: ['Furniture', 'Decor'] }
+  ];
+  var KEYWORDS = {
+    tickets:   /\b(ticket|tickets|concert|tour|festival|game|playoff|seats?|section|row|show|broadway|vs\.?)\b/i,
+    tech:      /\b(iphone|ipad|macbook|laptop|phone|samsung|pixel|airpods?|charger|case|camera|tv|monitor|playstation|xbox|switch|console|headphones?|watch|apple|android)\b/i,
+    furniture: /\b(sofa|couch|chair|table|desk|dresser|bed|nightstand|bookshelf|shelf|cabinet|ottoman|stool|bench|wardrobe)\b/i,
+    home:      /\b(lamp|rug|vase|mirror|art|painting|candle|pillow|curtain|kitchen|dish|plate|pot|pan|decor|frame|blanket)\b/i,
+    clothing:  /\b(jacket|jeans|shirt|dress|shoes?|sneakers?|nike|adidas|boots?|coat|sweater|hoodie|bag|purse|levi|pants|skirt)\b/i
+  };
+  var byId = function (list, id) { return list.filter(function (x) { return x.id === id; })[0]; };
+  var detect = function (t) { for (var k in KEYWORDS) if (KEYWORDS[k].test(t)) return k; return null; };
+
+  // Estimates of what a seller keeps. Fees change: check each site's current fee page and update here.
+  // (Approximate, standard rates in USD; excludes shipping, taxes, promoted listings and payment extras.)
+  var FEES = {
+    ebay:     { name: 'eBay',                 net: function (p) { var f = p * 0.1325 + (p <= 10 ? 0.30 : 0.40); return { fee: f, note: 'about 13% + 40\u00a2' }; } },
+    facebook: { name: 'Facebook Marketplace', net: function (p) { var f = Math.max(0.80, p * 0.10); return { fee: f, note: 'about 10% if shipped' }; },
+                local: 'No fee for local pickup' },
+    poshmark: { name: 'Poshmark',             net: function (p) { return p > 15 ? { fee: p * 0.20, note: '20%' } : { fee: 2.95, note: 'flat $2.95' }; } }
+  };
+  var money = function (n) { return '$' + n.toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
+
+  var state = { photo: '', title: '', price: '', category: null };
+
+  // ---------- lower page: tiles + stores ----------
+  CATS.forEach(function (c) {
+    var t = document.createElement('button');
+    t.type = 'button'; t.className = 'tile'; t.setAttribute('data-cat', c.id); t.setAttribute('aria-pressed', 'false');
+    t.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + c.icon + '</svg><h3></h3><div class="eg"></div><div class="best"></div>';
+    t.querySelector('h3').textContent = c.label;
+    t.querySelector('.eg').textContent = c.eg;
+    t.querySelector('.best').textContent = 'Good on ' + c.best.slice(0, 2).map(function (id) { return byId(STORES, id).name; }).join(' and ');
+    t.addEventListener('click', function () { setCategory(state.category === c.id ? null : c.id); if (state.category) $('where').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' }); });
+    $('tiles').appendChild(t);
+  });
+  STORES.forEach(function (s) {
+    var d = document.createElement('div');
+    d.className = 'store'; d.setAttribute('data-store', s.id);
+    d.innerHTML = '<h3><span class="nm"></span><span class="badge"></span></h3><p></p><div class="tags"></div>';
+    d.querySelector('.nm').textContent = s.name;
+    var b = d.querySelector('.badge'); b.textContent = s.live ? 'Available now' : 'Coming soon'; b.className = 'badge ' + (s.live ? 'live' : 'soon');
+    d.querySelector('p').textContent = s.blurb;
+    s.tags.forEach(function (t) { var e = document.createElement('span'); e.className = 'tg'; e.textContent = t; d.querySelector('.tags').appendChild(e); });
+    $('stores').appendChild(d);
+  });
+
+  function setCategory(id) {
+    state.category = id;
+    var cat = id ? byId(CATS, id) : null;
+    Array.prototype.forEach.call(document.querySelectorAll('.tile'), function (el) { el.setAttribute('aria-pressed', el.getAttribute('data-cat') === id ? 'true' : 'false'); });
+    Array.prototype.forEach.call(document.querySelectorAll('.store'), function (el) {
+      var m = cat && cat.best.indexOf(el.getAttribute('data-store')) !== -1;
+      el.classList.toggle('match', !!m); el.classList.toggle('dim', !!cat && !m);
+    });
+    $('where-title').textContent = cat ? 'Where ' + cat.label.toLowerCase() + ' sell well' : 'Where it can go';
+    $('where-sub').textContent = cat ? 'Highlighted sites are the best fit. You choose where each item goes.' : 'Tap a category above to see which sites fit it best.';
+    renderWhere();
+  }
+
+  // ---------- the lister ----------
+  var examples = ['iPhone 14 Pro, 256 GB', 'Oak dresser, 6 drawers', 'Two tickets, Saturday night', 'Levi’s denim jacket, medium', 'Standing desk, walnut', 'PS5 with two controllers'];
+  var exi = 0;
+  setInterval(function () { if (!state.title && document.activeElement !== $('title')) { exi = (exi + 1) % examples.length; $('title').placeholder = examples[exi]; } }, 2600);
+
+  function stage() { return !state.photo ? 1 : !state.title ? 2 : 3; }
+
+  function renderWhere() {
+    var box = $('pv-where'); box.textContent = '';
+    var cat = state.category ? byId(CATS, state.category) : null;
+    if (!cat || !state.title) return;
+    var lead = document.createElement('span'); lead.textContent = 'Fits:'; box.appendChild(lead);
+    cat.best.forEach(function (id) {
+      var s = byId(STORES, id); var e = document.createElement('span');
+      e.className = 'tag' + (s.live ? '' : ' soon'); e.textContent = s.name + (s.live ? '' : ' (soon)'); box.appendChild(e);
+    });
+  }
+
+  function renderTake() {
+    var box = $('take'), keep = $('pv-keep');
+    var p = Number(state.price);
+    keep.textContent = '';
+    if (state.price === '' || !isFinite(p) || p <= 0 || !state.title) { box.hidden = true; return; }
+    var cat = byId(CATS, state.category || 'other');
+    var live = cat.best.filter(function (id) { return byId(STORES, id).live && FEES[id]; });
+    var wasHidden = box.hidden;
+    box.textContent = '';
+    if (!live.length) {
+      var h = document.createElement('h4'); h.textContent = 'What you\u2019d take home'; box.appendChild(h);
+      var m = document.createElement('div'); m.className = 'fine2'; m.textContent = 'The best sites for this are still being connected, and their fees vary. We\u2019ll show your estimate here once they\u2019re ready.'; box.appendChild(m);
+      box.hidden = false; return;
+    }
+    var rows = live.map(function (id) {
+      var f = FEES[id], r = f.net(p);
+      var o = { id: id, name: f.name, net: Math.max(0, p - r.fee), note: r.note, local: f.local };
+      if (f.local) o.localNet = p;
+      return o;
+    });
+    rows.sort(function (a, b) { return (b.localNet || b.net) - (a.localNet || a.net); });
+    var hh = document.createElement('h4'); hh.textContent = 'What you\u2019d take home (estimate)'; box.appendChild(hh);
+    rows.forEach(function (r, i) {
+      var row = document.createElement('div'); row.className = 'row' + (i === 0 ? ' best' : '');
+      var left = document.createElement('div'); left.textContent = r.name;
+      var sm = document.createElement('small'); sm.textContent = r.local ? r.local + ' \u00b7 ' + money(r.net) + ' if shipped' : 'Fees ' + r.note; left.appendChild(sm);
+      var b = document.createElement('b'); b.textContent = money(r.localNet || r.net);
+      row.appendChild(left); row.appendChild(b); box.appendChild(row);
+    });
+    var fine = document.createElement('div'); fine.className = 'fine2'; fine.textContent = 'Estimates use standard fees and leave out shipping. Check each site for current rates.'; box.appendChild(fine);
+    box.hidden = false;
+    if (wasHidden && !reduce) { box.classList.remove('reveal'); void box.offsetWidth; box.classList.add('reveal'); }
+    keep.textContent = 'You could keep about ' + money(rows[0].localNet || rows[0].net) + (rows[0].local ? ' with local pickup' : '');
+  }
+
+  function render() {
+    var st = stage();
+    var dots = document.querySelectorAll('.dots i');
+    Array.prototype.forEach.call(dots, function (d, i) { d.classList.toggle('on', i < st); });
+    $('stepnum').textContent = st + ' of 3';
+
+    var hasTitle = !!state.title, hasPrice = state.price !== '' && Number(state.price) >= 0 && !isNaN(Number(state.price));
+    $('pv-title').textContent = hasTitle ? state.title : 'Your item'; $('pv-title').className = 't' + (hasTitle ? '' : ' ph');
+    $('pv-price').textContent = hasPrice && state.price !== '' ? '$' + Number(state.price).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '$0';
+    $('pv-price').className = 'p' + (hasPrice && state.price !== '' ? '' : ' ph');
+
+    var ft = $('f-title'), fp = $('f-price');
+    if (state.photo && ft.hidden) { ft.hidden = false; if (!reduce) ft.classList.add('reveal'); }
+    if (state.title && fp.hidden) { fp.hidden = false; if (!reduce) fp.classList.add('reveal'); }
+
+    var go = $('go');
+    go.textContent = !state.photo ? 'Add a photo to begin' : !state.title ? 'Next: what is it?' : (state.price === '' ? 'Next: set your price' : 'List it →');
+    renderWhere();
+    renderTake();
+  }
+
+  // resize the photo so it's light enough to carry to the next page
+  function loadPhoto(file) {
+    if (!file || !/^image\//.test(file.type)) return;
+    var img = new Image(); var url = URL.createObjectURL(file);
+    img.onload = function () {
+      var max = 900, r = Math.min(1, max / Math.max(img.width, img.height));
+      var c = document.createElement('canvas'); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      state.photo = c.toDataURL('image/jpeg', 0.85);
+      URL.revokeObjectURL(url);
+      var shot = $('shot'); var old = shot.querySelector('img'); if (old) old.remove();
+      var im = document.createElement('img'); im.alt = 'Your photo'; im.src = state.photo; shot.appendChild(im); shot.classList.add('has-photo');
+      render(); setTimeout(function () { $('title').focus({ preventScroll: true }); }, 60);
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); };
+    img.src = url;
+  }
+  $('photo').addEventListener('change', function () { loadPhoto(this.files[0]); });
+  ['dragenter', 'dragover'].forEach(function (ev) { $('shot').addEventListener(ev, function (e) { e.preventDefault(); this.classList.add('drag'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { $('shot').addEventListener(ev, function (e) { e.preventDefault(); this.classList.remove('drag'); if (ev === 'drop' && e.dataTransfer.files[0]) loadPhoto(e.dataTransfer.files[0]); }); });
+
+  $('title').addEventListener('input', function () {
+    state.title = this.value.trim();
+    var found = state.title ? detect(state.title) : null;
+    var box = $('detected'); box.textContent = '';
+    if (found) { box.appendChild(document.createTextNode('Looks like ')); var b = document.createElement('b'); b.textContent = byId(CATS, found).label; box.appendChild(b); }
+    setCategory(found);
+    render();
+  });
+  $('price').addEventListener('input', function () { state.price = this.value; render(); });
+
+  // the big button always does the next thing
+  $('lister').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!state.photo) { $('photo').click(); return; }
+    if (!state.title) { $('title').focus(); return; }
+    if (state.price === '') { $('price').focus(); return; }
+    try { sessionStorage.setItem('crosslist_sell_intent', JSON.stringify({ category: state.category || 'other', title: state.title, price: state.price, photo: state.photo })); } catch (err) {}
+    window.location.href = '/dashboard.html#list';
+  });
+  $('cta-go').addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' }); setTimeout(function () { $('photo').click(); }, reduce ? 0 : 350); });
+
+  render();
+})();
+</script>
+</body>
+</html>

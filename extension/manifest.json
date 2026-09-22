@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Crosslist Connector",
-  "description": "Connects your local Crosslist dashboard to eBay, Facebook Marketplace, Depop, Poshmark, and Etsy using your browser login.",
-  "version": "0.5.0",
+  "description": "Connects your local Crosslist dashboard to eBay, Depop, Poshmark, Etsy, and Reverb using your browser login.",
+  "version": "0.6.7",
   "permissions": ["cookies", "tabs", "scripting", "storage"],
   "host_permissions": [
     "https://www.facebook.com/*",
@@ -19,6 +19,8 @@
     "https://poshmark.com/*",
     "https://www.poshmark.com/*",
     "https://www.etsy.com/*",
+    "https://reverb.com/*",
+    "https://www.reverb.com/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
@@ -79,6 +81,14 @@
     {
       "matches": ["https://www.etsy.com/*"],
       "js": ["scrape-utils.js", "content-etsy.js", "content-create.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://reverb.com/*",
+        "https://www.reverb.com/*"
+      ],
+      "js": ["scrape-utils.js", "content-reverb.js", "content-create.js"],
       "run_at": "document_idle"
     }
   ],

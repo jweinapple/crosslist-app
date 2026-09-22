@@ -386,7 +386,8 @@ label { font-weight: 600; color: var(--ink); }
   transition: background 0.15s, border-color 0.15s;
 }
 .bulk-dropzone:hover, .bulk-dropzone.dragover { background: #dbe6ff; border-color: var(--blue); }
-.bulk-photo-thumb { border-radius: 14px; }
+.bulk-photo-thumb { border-radius: 14px; cursor: grab; }
+.bulk-photo-thumb.dragging { cursor: grabbing; }
 .bulk-store-chip { border: 2px solid var(--line-2); border-radius: 14px; padding: 14px 16px; font-size: 16px; font-weight: 700; }
 .bulk-store-chip:hover { border-color: var(--blue); background: var(--blue-soft); }
 .bulk-store-chip.disconnected { opacity: 0.6; }

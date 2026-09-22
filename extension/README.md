@@ -3,7 +3,7 @@
 This mirrors how **Vendoo** connects marketplaces:
 
 - **Facebook Marketplace** uses your existing Facebook login in Chrome (`extension: true` in Vendoo). There is no public Marketplace listing OAuth API.
-- **eBay**, **Depop**, and **Etsy** connect with OAuth when API credentials are in `.env`. This extension is an optional backup that reads your logged-in browser session.
+- **eBay**, **Depop**, **Etsy**, and **Reverb** connect with OAuth when API credentials are in `.env`. This extension is an optional backup that reads your logged-in browser session.
 - **Poshmark** signs in with email and password. The extension can use your browser session instead.
 
 ## Install (one time)
@@ -21,10 +21,11 @@ This mirrors how **Vendoo** connects marketplaces:
 3. It imports live listings (Depop via API when possible, otherwise by scraping the shop page).
 4. Listings are sent to the local dashboard API for bulk edit.
 
-## Optional: eBay / Etsy / Depop OAuth APIs
+## Optional: eBay / Etsy / Depop / Reverb OAuth APIs
 
 Add real credentials to `.env` so Connect uses official OAuth instead of browser scraping:
 
 - eBay: `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` from [developer.ebay.com](https://developer.ebay.com/my/keys)
 - Etsy: `ETSY_API_KEY` from [etsy.com/developers](https://www.etsy.com/developers/your-apps)
 - Depop: partner `DEPOP_CLIENT_ID` / `DEPOP_CLIENT_SECRET` from [developers@depop.com](mailto:developers@depop.com)
+- Reverb: `REVERB_CLIENT_ID` / `REVERB_CLIENT_SECRET` from [reverb.com/my/api_settings](https://reverb.com/my/api_settings)

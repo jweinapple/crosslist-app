@@ -8,7 +8,9 @@ import path from 'path';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { v4 as uuidv4 } from 'uuid';
 import open from 'open';
+import convertHeic from 'heic-convert';
 import * as userStore from './server/db.js';
+import { platformFailureLabel, sanitizeListingFailure, slimListingResult } from './server/listing-failures.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -85,7 +87,7 @@ function isPublicApi(req) {
     route === 'POST /api/auth/login' ||
     route === 'POST /api/auth/logout' ||
     (req.method === 'GET' &&
-      /^\/api\/auth\/(ebay|facebook|depop|etsy|google)(\/live|\/callback)?$/.test(req.path))
+      /^\/api\/auth\/(ebay|facebook|depop|etsy|reverb|google)(\/live|\/callback)?$/.test(req.path))
   );
 }
 
@@ -97,9 +99,7 @@ function requirePageLogin(req, res) {
 
 function beginOAuth(req, res, platform, extra = {}) {
   if (!requirePageLogin(req, res)) return null;
-  const state = uuidv4();
-  userStore.saveOAuthState(state, req.user.id, platform, extra);
-  return state;
+  return userStore.issueOAuthState(req.user.id, platform, extra);
 }
 
 function userFromOAuthState(state) {
@@ -109,9 +109,18 @@ function userFromOAuthState(state) {
 }
 
 app.use((req, res, next) => {
-  const sid = userStore.parseCookies(req)[userStore.SESSION_COOKIE];
-  const session = userStore.getSession(sid);
-  const user = session ? userStore.loadUser(session.user_id) : null;
+  const cookies = userStore.parseCookies(req);
+  const sid = cookies[userStore.SESSION_COOKIE];
+  let session = userStore.getSession(sid);
+  let user = session ? userStore.loadUser(session.user_id) : null;
+  if (!user) {
+    user = userStore.restoreUserFromIdentityCookie(cookies);
+    if (user) {
+      const sessionId = userStore.createSession(user.id);
+      session = { id: sessionId, user_id: user.id };
+      userStore.setSessionCookie(res, sessionId, user);
+    }
+  }
   req.user = user;
   req.sessionId = session?.id || null;
   const listingsMap = user ? userStore.listingMapFor(user.id) : new Map();
@@ -163,6 +172,43 @@ function recordActivity(type, message, detail, req = null) {
   } catch (error) {
     console.warn('Failed to record activity:', error.message);
   }
+}
+
+function isListingFailure(result) {
+  if (result?.failure) return true;
+  if (result?.needsReview) return false;
+  const status = String(result?.status || '');
+  if (status === 'active' || status === 'listing') return false;
+  return Boolean(result?.error);
+}
+
+function recordListingFailure(raw, req) {
+  const failure = sanitizeListingFailure(raw);
+  if (!failure) return { dropped: typeof raw?.id === 'string' ? raw.id : null };
+  const user = req?.user || getCurrentUser();
+  if (!user?.id) return { dropped: failure.id };
+  if (failure.id && userStore.hasListingFailure(user.id, failure.id)) return { id: failure.id };
+  const label = failure.title ? `"${failure.title}"` : 'an item';
+  const where = failure.step ? ` while ${failure.step}` : '';
+  recordActivity(
+    'error',
+    `${platformFailureLabel(failure.platform)} listing failed for ${label}${where}: ${failure.error}`,
+    {
+      failureId: failure.id,
+      listingId: failure.listingId,
+      title: failure.title,
+      platform: failure.platform,
+      outcome: 'error',
+      error: failure.error,
+      step: failure.step,
+      status: failure.status,
+      marketplaceCode: failure.marketplaceCode,
+      source: failure.source || 'extension',
+      trace: failure.trace,
+    },
+    req
+  );
+  return { id: failure.id };
 }
 
 function serializeError(error) {
@@ -225,11 +271,40 @@ app.use((req, res, next) => {
   next();
 });
 
+function isLocalhostUrl(value) {
+  try {
+    const { hostname } = new URL(value);
+    return hostname === 'localhost' || hostname === '127.0.0.1';
+  } catch {
+    return /localhost|127\.0\.0\.1/.test(String(value || ''));
+  }
+}
+
+function withHttps(host) {
+  const value = String(host || '').trim().replace(/\/$/, '');
+  if (!value) return '';
+  return value.startsWith('http') ? value : `https://${value}`;
+}
+
 function resolveBaseUrl() {
   const explicit = String(process.env.BASE_URL || '').trim().replace(/\/$/, '');
-  if (explicit) return explicit;
+  if (explicit && !isLocalhostUrl(explicit)) return explicit;
+  const production = withHttps(process.env.VERCEL_PROJECT_PRODUCTION_URL);
+  if (production) return production;
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  if (explicit) return explicit;
   return `http://localhost:${PORT}`;
+}
+
+function requestOrigin(req) {
+  const host = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '')
+    .split(',')[0]
+    .trim();
+  if (host && !host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+    const proto = String(req?.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim() || 'https';
+    return `${proto}://${host}`.replace(/\/$/, '');
+  }
+  return BASE_URL;
 }
 
 const BASE_URL = resolveBaseUrl();
@@ -243,9 +318,17 @@ function isPlaceholder(value) {
   return v.includes('your_') || v.includes('_here') || v === 'changeme';
 }
 
+// eBay OAuth redirect_uri must be the RuName from Sign-in Settings, not a URL.
+function isEbayRuName(value) {
+  if (isPlaceholder(value)) return false;
+  const v = String(value).trim();
+  return Boolean(v) && !/^https?:\/\//i.test(v) && !v.includes('/');
+}
+
 const ebayLiveMode =
   !isPlaceholder(process.env.EBAY_CLIENT_ID) &&
-  !isPlaceholder(process.env.EBAY_CLIENT_SECRET);
+  !isPlaceholder(process.env.EBAY_CLIENT_SECRET) &&
+  isEbayRuName(process.env.EBAY_REDIRECT_URI);
 
 const depopLiveMode =
   !isPlaceholder(process.env.DEPOP_CLIENT_ID) &&
@@ -257,12 +340,19 @@ function getEtsyApiKey() {
 
 const etsyLiveMode = !isPlaceholder(getEtsyApiKey());
 
+const reverbLiveMode =
+  !isPlaceholder(process.env.REVERB_CLIENT_ID) &&
+  !isPlaceholder(process.env.REVERB_CLIENT_SECRET);
+
 const googleLiveMode =
   !isPlaceholder(process.env.GOOGLE_CLIENT_ID) &&
   !isPlaceholder(process.env.GOOGLE_CLIENT_SECRET);
 
-function googleRedirectUri() {
-  return process.env.GOOGLE_REDIRECT_URI || `${BASE_URL}/api/auth/google/callback`;
+function googleRedirectUri(req) {
+  const explicit = String(process.env.GOOGLE_REDIRECT_URI || '').trim().replace(/\/$/, '');
+  if (explicit && !isLocalhostUrl(explicit)) return explicit;
+  const origin = BASE_URL && !isLocalhostUrl(BASE_URL) ? BASE_URL : requestOrigin(req);
+  return `${origin}/api/auth/google/callback`;
 }
 
 function createPkce() {
@@ -665,7 +755,7 @@ async function fetchListingThumbnail(listing) {
     const image = extractOgImage(await fetchHtml(`https://m.ebay.com/itm/${ebayId}`));
     if (image) return image;
   }
-  for (const platform of ['depop', 'poshmark', 'etsy', 'facebook']) {
+  for (const platform of ['depop', 'poshmark', 'etsy', 'reverb', 'facebook']) {
     const url = getPlatforms(listing)[platform]?.url;
     if (!url) continue;
     try {
@@ -703,9 +793,28 @@ function applyListingImages(listing, images) {
   if (!nextImages.length) return listing;
   const platforms = getPlatforms(listing);
   for (const [platform, entry] of Object.entries(platforms)) {
-    if (!realListingImages(entry.images).length) {
+    const existing = realListingImages(entry.images);
+    if (!existing.length) {
       platforms[platform] = { ...entry, images: nextImages };
+      continue;
     }
+    const used = new Set();
+    const ordered = [];
+    for (const image of nextImages) {
+      const imageKey = normalizeImageUrl(image) || image;
+      const match = existing.find((url) => {
+        if (used.has(url)) return false;
+        return url === image || (normalizeImageUrl(url) || url) === imageKey;
+      });
+      if (match) {
+        ordered.push(match);
+        used.add(match);
+      }
+    }
+    for (const url of existing) {
+      if (!used.has(url)) ordered.push(url);
+    }
+    platforms[platform] = { ...entry, images: ordered };
   }
   return {
     ...toUnifiedListing(listing),
@@ -1054,6 +1163,7 @@ function seedDemoInventory() {
         depop: { listingId: 'demo_depop_1', status: 'active', price: 48 },
         poshmark: { listingId: 'demo_posh_1', status: 'active', price: 55 },
         etsy: { listingId: 'demo_etsy_1', status: 'active', price: 48 },
+        reverb: { listingId: 'demo_reverb_1', status: 'active', price: 48 },
       },
       lastUpdated: now,
     },
@@ -1110,6 +1220,7 @@ function buildMarketplaceCandidates(platform) {
   if (platform === 'depop') return buildDepopMarketplaceCandidates(now);
   if (platform === 'poshmark') return buildPoshmarkMarketplaceCandidates(now);
   if (platform === 'etsy') return buildEtsyMarketplaceCandidates(now);
+  if (platform === 'reverb') return buildReverbMarketplaceCandidates(now);
   if (platform === 'ebay') {
     return [
       {
@@ -1386,6 +1497,47 @@ function buildEtsyMarketplaceCandidates(now) {
   ];
 }
 
+function buildReverbMarketplaceCandidates(now) {
+  return [
+    {
+      title: 'Fender Player Stratocaster',
+      description: 'Sunburst, maple neck, lightly played.',
+      price: 649,
+      quantity: 1,
+      images: ['https://placehold.co/300x200/png?text=Reverb+1'],
+      platform: 'reverb',
+      platformListingId: 'demo_reverb_strat',
+      status: 'active',
+      url: 'https://reverb.com/item/demo_reverb_strat',
+      lastUpdated: now,
+    },
+    {
+      title: 'Boss DS-1 Distortion',
+      description: 'Classic pedal, works perfectly.',
+      price: 49,
+      quantity: 1,
+      images: ['https://placehold.co/300x200/png?text=Reverb+2'],
+      platform: 'reverb',
+      platformListingId: 'demo_reverb_ds1',
+      status: 'active',
+      url: 'https://reverb.com/item/demo_reverb_ds1',
+      lastUpdated: now,
+    },
+    {
+      title: 'Shure SM57 Dynamic Microphone',
+      description: 'Includes clip, no case.',
+      price: 89,
+      quantity: 1,
+      images: ['https://placehold.co/300x200/png?text=Reverb+3'],
+      platform: 'reverb',
+      platformListingId: 'demo_reverb_sm57',
+      status: 'active',
+      url: 'https://reverb.com/item/demo_reverb_sm57',
+      lastUpdated: now,
+    },
+  ];
+}
+
 function annotateImportCandidates(candidates, platform) {
   return candidates.map((listing) => {
     const incoming = { ...listing, platform: listing.platform || platform };
@@ -1644,7 +1796,7 @@ app.post('/api/auth/signup', async (req, res) => {
       name: req.body?.name,
     });
     const sessionId = userStore.createSession(user.id);
-    userStore.setSessionCookie(res, sessionId);
+    userStore.setSessionCookie(res, sessionId, user);
     return res.status(201).json({
       authenticated: true,
       user: { id: user.id, email: user.email, name: user.name || '' },
@@ -1668,7 +1820,7 @@ app.post('/api/auth/login', async (req, res) => {
     const user = await userStore.authenticateUser(req.body?.email, req.body?.password);
     rateBuckets.delete(`login-email:${emailKey}`);
     const sessionId = userStore.createSession(user.id);
-    userStore.setSessionCookie(res, sessionId);
+    userStore.setSessionCookie(res, sessionId, user);
     return res.json({
       authenticated: true,
       user: { id: user.id, email: user.email, name: user.name || '' },
@@ -1691,15 +1843,14 @@ app.get('/api/auth/google', (req, res) => {
   if (!googleLiveMode) {
     return res.redirect('/dashboard.html?authError=google-config');
   }
-  const state = uuidv4();
-  userStore.saveOAuthState(state, '', 'google');
+  const state = userStore.issueOAuthState('', 'google');
   // Bind the flow to this browser so a callback URL can't be replayed in someone else's.
   res.append('Set-Cookie', `${GOOGLE_STATE_COOKIE}=${state}; ${userStore.cookieSecurity()}; Max-Age=600`);
   const authUrl =
     'https://accounts.google.com/o/oauth2/v2/auth?' +
     new URLSearchParams({
       client_id: process.env.GOOGLE_CLIENT_ID,
-      redirect_uri: googleRedirectUri(),
+      redirect_uri: googleRedirectUri(req),
       response_type: 'code',
       scope: 'openid email profile',
       state,
@@ -1727,7 +1878,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
         code: String(code),
         client_id: process.env.GOOGLE_CLIENT_ID,
         client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: googleRedirectUri(),
+        redirect_uri: googleRedirectUri(req),
         grant_type: 'authorization_code',
       }),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
@@ -1752,7 +1903,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
       name: profile.name || profile.given_name || '',
     });
     const sessionId = userStore.createSession(user.id);
-    userStore.setSessionCookie(res, sessionId);
+    userStore.setSessionCookie(res, sessionId, user);
     return res.redirect(created ? '/dashboard.html?googleSignup=1' : '/dashboard.html');
   } catch (oauthError) {
     logError('Google OAuth', oauthError, { req });
@@ -1764,7 +1915,20 @@ function isExtensionToken(token) {
   return token === 'extension';
 }
 
+const IMPORT_PLATFORMS = ['ebay', 'facebook', 'depop', 'poshmark', 'etsy', 'reverb'];
+const DISABLED_PLATFORMS = new Set(['facebook']);
+
+function isStoreEnabled(platform) {
+  return IMPORT_PLATFORMS.includes(platform) && !DISABLED_PLATFORMS.has(platform);
+}
+
+function disabledStoreMessage(platform) {
+  if (platform === 'facebook') return 'Facebook Marketplace is not available right now';
+  return 'That store is not available right now';
+}
+
 function getConnectionMode(user, platform) {
+  if (DISABLED_PLATFORMS.has(platform)) return 'none';
   if (platform === 'ebay') {
     if (user.ebayExtension || isExtensionToken(user.ebayToken)) return 'extension';
     if (user.ebayDemo) return 'demo';
@@ -1795,22 +1959,29 @@ function getConnectionMode(user, platform) {
     if (user.etsyToken) return 'live';
     return 'none';
   }
+  if (platform === 'reverb') {
+    if (user.reverbExtension || isExtensionToken(user.reverbToken)) return 'extension';
+    if (user.reverbDemo) return 'demo';
+    if (user.reverbToken) return 'live';
+    return 'none';
+  }
   return 'none';
 }
-
-const IMPORT_PLATFORMS = ['ebay', 'facebook', 'depop', 'poshmark', 'etsy'];
 
 function isRealConnectionMode(mode) {
   return mode === 'live' || mode === 'password' || mode === 'extension';
 }
 
 const CREATE_URLS = {
-  ebay: 'https://www.ebay.com/sl/list',
   facebook: 'https://www.facebook.com/marketplace/create/item',
+  ebay: 'https://www.ebay.com/sl/prelist/suggest',
   depop: 'https://www.depop.com/products/create/',
   poshmark: 'https://poshmark.com/create-listing',
   etsy: 'https://www.etsy.com/your/shops/me/tools/listings/create',
 };
+
+const SESSION_LIST_PLATFORMS = new Set(['reverb']);
+const FORM_FILL_PLATFORMS = new Set(['facebook', 'ebay', 'depop', 'poshmark', 'etsy']);
 
 function safeUserId(userId) {
   return String(userId || '').replace(/[^a-zA-Z0-9._-]/g, '');
@@ -1826,29 +1997,64 @@ function extFromMime(mime, filename = '') {
   return 'jpg';
 }
 
-function persistListingImage(userId, image) {
+function isHeicImage(buffer, mime = '', filename = '') {
+  const type = String(mime || '').toLowerCase();
+  if (type.includes('heic') || type.includes('heif')) return true;
+  if (/\.(heic|heif|hiec)$/i.test(String(filename || ''))) return true;
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  if (buffer.toString('ascii', 4, 8) !== 'ftyp') return false;
+  const brands = buffer.toString('ascii', 8, Math.min(buffer.length, 32)).toLowerCase();
+  if (brands.includes('avif') || brands.includes('avis')) return false;
+  return /heic|heif|heix|mif1|msf1/.test(brands);
+}
+
+async function toStoredImage(buffer, mime = '', filename = '') {
+  if (!isHeicImage(buffer, mime, filename)) {
+    return { buffer, ext: extFromMime(mime, filename) };
+  }
+  const jpeg = await convertHeic({
+    buffer,
+    format: 'JPEG',
+    quality: 0.9,
+  });
+  return { buffer: Buffer.from(jpeg), ext: 'jpg' };
+}
+
+async function persistListingImage(userId, image) {
   const raw = String(image || '').trim();
   if (!raw) return '';
   if (raw.startsWith('/uploads/')) return raw;
   if (/^https?:\/\//i.test(raw) && isRealListingImage(raw)) return raw;
   const match = raw.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/i);
   if (!match) return '';
-  const buffer = Buffer.from(match[2], 'base64');
+  let buffer = Buffer.from(match[2], 'base64');
   if (!buffer.length || buffer.length > 10 * 1024 * 1024) return '';
-  const owner = safeUserId(userId);
-  const dir = path.join(UPLOADS_DIR, owner);
-  fs.mkdirSync(dir, { recursive: true });
-  const name = `${uuidv4()}.${extFromMime(match[1])}`;
-  fs.writeFileSync(path.join(dir, name), buffer);
-  return `/uploads/${owner}/${name}`;
+  try {
+    const stored = await toStoredImage(buffer, match[1]);
+    buffer = stored.buffer;
+    const owner = safeUserId(userId);
+    const dir = path.join(UPLOADS_DIR, owner);
+    fs.mkdirSync(dir, { recursive: true });
+    const name = `${uuidv4()}.${stored.ext}`;
+    fs.writeFileSync(path.join(dir, name), buffer);
+    return `/uploads/${owner}/${name}`;
+  } catch {
+    return '';
+  }
 }
 
-function persistListingImages(userId, images = []) {
-  return [...new Set((images || []).map((image) => persistListingImage(userId, image)).filter(Boolean))].slice(0, 8);
+async function persistListingImages(userId, images = []) {
+  const saved = [];
+  for (const image of images || []) {
+    const url = await persistListingImage(userId, image);
+    if (url && !saved.includes(url)) saved.push(url);
+    if (saved.length >= 8) break;
+  }
+  return saved;
 }
 
 function connectedStores(user) {
-  return IMPORT_PLATFORMS.map((id) => ({ id, mode: getConnectionMode(user, id) })).filter(
+  return IMPORT_PLATFORMS.filter(isStoreEnabled).map((id) => ({ id, mode: getConnectionMode(user, id) })).filter(
     (store) => store.mode && store.mode !== 'none'
   );
 }
@@ -1856,7 +2062,7 @@ function connectedStores(user) {
 function requestedPushPlatforms(user, requested) {
   const connected = connectedStores(user);
   const wanted = Array.isArray(requested) && requested.length
-    ? requested.map((value) => String(value).toLowerCase()).filter((id) => IMPORT_PLATFORMS.includes(id))
+    ? requested.map((value) => String(value).toLowerCase()).filter((id) => isStoreEnabled(id))
     : connected.map((store) => store.id);
   return wanted.map((id) => ({
     id,
@@ -1872,10 +2078,20 @@ function mapEbayCondition(value) {
   return 'USED_GOOD';
 }
 
+function mapReverbConditionUuid(value) {
+  const key = String(value || 'used_good').toLowerCase().replace(/\s+/g, '_');
+  if (key === 'new' || key === 'brand_new') return '7c3f45de-2ae0-4c81-8400-fdb6b1d74890';
+  if (key === 'like_new' || key === 'mint') return 'ac5b9c1e-dc78-466d-b0b3-7cf712967a48';
+  if (key === 'used_excellent' || key === 'excellent') return 'df268ad1-c462-4ba6-b6db-e007e23922ea';
+  if (key === 'used_fair' || key === 'fair') return '98777886-76d0-44c8-865e-bb40e669e934';
+  if (key === 'poor') return '6a9dfcad-600b-46c8-9e08-ce6e5057921e';
+  return 'f7a3f48c-972a-44c6-b01a-0cd27488d3f6';
+}
+
 function pendingPlatformEntry(listing, platform, extra = {}) {
   return {
     listingId: extra.listingId || null,
-    url: extra.url || CREATE_URLS[platform] || null,
+    url: extra.url || null,
     status: extra.status || 'pending',
     price: parseListingPrice(listing.price),
     images: listing.images || [],
@@ -1891,7 +2107,7 @@ function applyPlatformResult(listing, platform, result = {}) {
     ...pendingPlatformEntry(listing, platform),
     ...platforms[platform],
     listingId: result.listingId || platforms[platform]?.listingId || null,
-    url: result.url || platforms[platform]?.url || CREATE_URLS[platform] || null,
+    url: result.url || platforms[platform]?.url || null,
     status,
     price: parseListingPrice(listing.price),
     images: listing.images || [],
@@ -1913,7 +2129,7 @@ function applyPlatformResult(listing, platform, result = {}) {
 function extensionTaskFor(platform, listing) {
   return {
     platform,
-    createUrl: CREATE_URLS[platform],
+    createUrl: CREATE_URLS[platform] || null,
     item: {
       id: listing.id,
       title: listing.title,
@@ -1923,14 +2139,93 @@ function extensionTaskFor(platform, listing) {
       images: listing.images || [],
       condition: listing.condition || 'used_good',
       sku: listing.sku || '',
+      category: listing.category || 'other',
+      details: listing.details || {},
     },
   };
+}
+
+function ebayCategoryHint(listing) {
+  const category = String(listing?.category || listing?.ebayCategoryId || 'other').toLowerCase();
+  const map = {
+    clothing: '11450',
+    furniture: '11700',
+    home: '11700',
+    tech: '293',
+    tickets: '1305',
+    music: '619',
+  };
+  if (/^\d+$/.test(String(listing?.ebayCategoryId || ''))) return String(listing.ebayCategoryId);
+  return map[category] || '1';
+}
+
+async function fetchEbayAccountPolicies(user) {
+  const headers = {
+    ...ebayAuthHeaders(user.ebayToken),
+    'Content-Language': 'en-US',
+    'Accept-Language': 'en-US',
+  };
+  const load = async (path, listKey, idKey) => {
+    try {
+      const response = await axios.get(`${getEbayApiBase()}/sell/account/v1/${path}`, {
+        headers,
+        params: { marketplace_id: 'EBAY_US' },
+        timeout: 15000,
+      });
+      const list = response.data?.[listKey] || [];
+      return list[0]?.[idKey] || null;
+    } catch (error) {
+      logError(`eBay ${path} fetch`, error);
+      return null;
+    }
+  };
+  const [fulfillmentPolicyId, paymentPolicyId, returnPolicyId] = await Promise.all([
+    load('fulfillment_policy', 'fulfillmentPolicies', 'fulfillmentPolicyId'),
+    load('payment_policy', 'paymentPolicies', 'paymentPolicyId'),
+    load('return_policy', 'returnPolicies', 'returnPolicyId'),
+  ]);
+  return { fulfillmentPolicyId, paymentPolicyId, returnPolicyId };
+}
+
+async function fetchEbayInventoryLocation(user) {
+  try {
+    const response = await axios.get(`${getEbayApiBase()}/sell/inventory/v1/location`, {
+      headers: ebayAuthHeaders(user.ebayToken),
+      timeout: 15000,
+    });
+    const locations = response.data?.locations || [];
+    const enabled = locations.find((location) => location.merchantLocationStatus === 'ENABLED') || locations[0];
+    return enabled?.merchantLocationKey || null;
+  } catch (error) {
+    logError('eBay inventory location fetch', error);
+    return null;
+  }
+}
+
+async function ebaySellCall(step, request) {
+  try {
+    return await request();
+  } catch (error) {
+    logError(`eBay listing ${step}`, error, {
+      detail: {
+        source: 'ebay-api',
+        step,
+        url: error.config?.url,
+        method: String(error.config?.method || '').toUpperCase() || undefined,
+        code: error.code,
+        status: error.response?.status,
+      },
+    });
+    error.ebayStep = step;
+    throw error;
+  }
 }
 
 async function createEbayListingViaApi(user, listing) {
   const sku = `xl_${String(listing.id).replace(/[^a-zA-Z0-9]/g, '').slice(-12)}_${Date.now().toString(36)}`;
   const imageUrls = (listing.images || []).filter((url) => /^https:\/\//i.test(url));
-  await axios.put(
+  await ebaySellCall('create inventory item', () =>
+    axios.put(
     `${getEbayApiBase()}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
     {
       availability: {
@@ -1951,17 +2246,41 @@ async function createEbayListingViaApi(user, listing) {
         'Content-Type': 'application/json',
         'Content-Language': 'en-US',
       },
+      timeout: 20000,
     }
+    )
   );
 
-  const offerResponse = await axios.post(
+  const policies = await fetchEbayAccountPolicies(user);
+  const merchantLocationKey = await fetchEbayInventoryLocation(user);
+  if (!policies.fulfillmentPolicyId || !policies.paymentPolicyId || !policies.returnPolicyId) {
+    const error = new Error(
+      'eBay needs shipping, return, and payment policies in Seller Hub before you can list'
+    );
+    error.code = 'ebay_policies_required';
+    throw error;
+  }
+  if (!merchantLocationKey) {
+    const error = new Error('eBay needs a business location in Seller Hub before you can list');
+    error.code = 'ebay_location_required';
+    throw error;
+  }
+
+  const offerResponse = await ebaySellCall('create offer', () =>
+    axios.post(
     `${getEbayApiBase()}/sell/inventory/v1/offer`,
     {
       sku,
       marketplaceId: 'EBAY_US',
       format: 'FIXED_PRICE',
       availableQuantity: listing.quantity || 1,
-      categoryId: listing.ebayCategoryId || undefined,
+      categoryId: ebayCategoryHint(listing),
+      merchantLocationKey,
+      listingPolicies: {
+        fulfillmentPolicyId: policies.fulfillmentPolicyId,
+        paymentPolicyId: policies.paymentPolicyId,
+        returnPolicyId: policies.returnPolicyId,
+      },
       pricingSummary: {
         price: {
           value: Number(listing.price || 0).toFixed(2),
@@ -1975,7 +2294,9 @@ async function createEbayListingViaApi(user, listing) {
         'Content-Type': 'application/json',
         'Content-Language': 'en-US',
       },
+      timeout: 20000,
     }
+    )
   );
 
   const offerId = offerResponse.data?.offerId;
@@ -1983,29 +2304,96 @@ async function createEbayListingViaApi(user, listing) {
   let url = `https://www.ebay.com/itm/${sku}`;
   if (offerId) {
     try {
-      const published = await axios.post(
-        `${getEbayApiBase()}/sell/inventory/v1/offer/${offerId}/publish`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${user.ebayToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
+      const published = await ebaySellCall('publish offer', () =>
+        axios.post(
+          `${getEbayApiBase()}/sell/inventory/v1/offer/${offerId}/publish`,
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${user.ebayToken}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 20000,
+          }
+        )
       );
       listingId = published.data?.listingId || sku;
       url = `https://www.ebay.com/itm/${listingId}`;
     } catch (error) {
       return {
-        status: 'listing',
+        status: 'error',
         listingId: sku,
         url,
-        needsReview: true,
+        needsReview: false,
         error: error.response?.data?.errors?.[0]?.message || error.message,
       };
     }
   }
   return { status: 'active', listingId, url };
+}
+
+async function createReverbListingViaApi(user, listing) {
+  const details = listing.details && typeof listing.details === 'object' ? listing.details : {};
+  const title = String(listing.title || '').slice(0, 255);
+  const words = title.split(/\s+/).filter(Boolean);
+  const make = String(details.brand || details.make || words[0] || 'Unknown').slice(0, 80);
+  const model = String(details.model || words.slice(1).join(' ') || title).slice(0, 80);
+  const photos = (listing.images || []).filter((url) => /^https:\/\//i.test(url));
+  const quantity = Math.max(1, Number(listing.quantity) || 1);
+  const payload = {
+    title,
+    make,
+    model,
+    description: listing.description || listing.title || '',
+    price: {
+      amount: Number(listing.price || 0).toFixed(2),
+      currency: 'USD',
+    },
+    condition: { uuid: mapReverbConditionUuid(listing.condition) },
+    photos,
+    sku: listing.sku || undefined,
+    upc_does_not_apply: true,
+    has_inventory: true,
+    inventory: quantity,
+    shipping: { local: true },
+  };
+  if (details.year) payload.year = String(details.year);
+  const response = await axios.post(
+    'https://api.reverb.com/api/listings',
+    payload,
+    { headers: reverbApiHeaders(user.reverbToken), timeout: 20000 }
+  );
+  const created = response.data || {};
+  const listingId = String(created.id || created.listing_id || '');
+  const url = created._links?.web?.href || (listingId ? `https://reverb.com/item/${listingId}` : null);
+  const slug = String(created.state?.slug || created.state || '').toLowerCase();
+  const live = slug === 'live' || slug === 'published' || slug === 'active';
+  if (!listingId) {
+    return {
+      status: 'error',
+      listingId: null,
+      url: null,
+      needsReview: false,
+      error: 'Reverb did not create the listing',
+    };
+  }
+  if (!live) {
+    try {
+      await axios.put(
+        `https://api.reverb.com/api/listings/${encodeURIComponent(listingId)}`,
+        { state: { slug: 'live' } },
+        { headers: reverbApiHeaders(user.reverbToken), timeout: 20000 }
+      );
+    } catch (error) {
+      logError('Reverb publish', error);
+    }
+  }
+  return {
+    status: 'active',
+    listingId,
+    url,
+    needsReview: false,
+  };
 }
 
 async function pushListingToStores(listing, user, platforms) {
@@ -2031,7 +2419,7 @@ async function pushListingToStores(listing, user, platforms) {
         platform,
         status: 'active',
         listingId: `demo_${platform}_${next.id}`,
-        url: CREATE_URLS[platform],
+        url: null,
       };
       next = applyPlatformResult(next, platform, result);
       results.push({ ...result, mode });
@@ -2043,24 +2431,59 @@ async function pushListingToStores(listing, user, platforms) {
         const result = await createEbayListingViaApi(user, next);
         next = applyPlatformResult(next, platform, result);
         results.push({ ...result, platform, mode });
-        if (result.status === 'active') continue;
       } catch (error) {
         const message =
           error.response?.data?.errors?.[0]?.message ||
           error.response?.data?.error ||
           error.message ||
-          'eBay API listing failed';
-        const result = { platform, status: 'listing', error: message, needsReview: true };
+          'eBay listing failed';
+        if (!error.ebayStep) logError('Create eBay listing via API', error);
+        const result = {
+          platform,
+          status: 'error',
+          error: error.ebayStep ? `${message} (${error.ebayStep})` : message,
+          needsReview: false,
+          needsPolicies: error.code === 'ebay_policies_required',
+        };
         next = applyPlatformResult(next, platform, result);
         results.push({ ...result, mode });
       }
-    } else {
-      const result = { platform, status: 'listing', needsReview: true };
-      next = applyPlatformResult(next, platform, result);
-      results.push({ ...result, mode });
+      continue;
     }
 
-    extensionTasks.push(extensionTaskFor(platform, next));
+    if (platform === 'reverb' && mode === 'live') {
+      try {
+        const result = await createReverbListingViaApi(user, next);
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, platform, mode });
+      } catch (error) {
+        const message =
+          error.response?.data?.message ||
+          error.response?.data?.error ||
+          error.message ||
+          'Reverb listing failed';
+        const result = { platform, status: 'error', error: message, needsReview: false };
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, mode });
+      }
+      continue;
+    }
+
+    if (SESSION_LIST_PLATFORMS.has(platform) || FORM_FILL_PLATFORMS.has(platform)) {
+      const result = {
+        platform,
+        status: 'listing',
+        needsReview: FORM_FILL_PLATFORMS.has(platform),
+      };
+      next = applyPlatformResult(next, platform, result);
+      results.push({ ...result, mode });
+      extensionTasks.push(extensionTaskFor(platform, next));
+      continue;
+    }
+
+    const result = { platform, status: 'error', error: `Could not list on ${platform}` };
+    next = applyPlatformResult(next, platform, result);
+    results.push({ ...result, mode });
   }
 
   listings.set(next.id, next);
@@ -2104,6 +2527,11 @@ function ensureConnectedForImport(platform, { mode, account } = {}) {
       user.etsyExtension = true;
       user.etsyDemo = false;
       user.etsyAccount = account || 'etsy-browser-session';
+    } else if (platform === 'reverb') {
+      user.reverbToken = 'extension';
+      user.reverbExtension = true;
+      user.reverbDemo = false;
+      user.reverbAccount = account || 'reverb-browser-session';
     }
     persistStore();
     return 'extension';
@@ -2123,9 +2551,9 @@ app.get('/api/auth/status', (_req, res) => {
       account: user.ebayAccount || null,
     },
     facebook: {
-      connected: Boolean(user.facebookToken),
-      mode: getConnectionMode(user, 'facebook'),
-      account: user.facebookAccount || null,
+      connected: false,
+      mode: 'none',
+      account: null,
     },
     depop: {
       connected: Boolean(user.depopToken),
@@ -2142,12 +2570,18 @@ app.get('/api/auth/status', (_req, res) => {
       mode: getConnectionMode(user, 'etsy'),
       account: user.etsyAccount || null,
     },
+    reverb: {
+      connected: Boolean(user.reverbToken),
+      mode: getConnectionMode(user, 'reverb'),
+      account: user.reverbAccount || null,
+    },
     credentials: {
       ebayLiveMode,
       facebookLiveMode: false,
       facebookRequiresExtension: true,
       depopLiveMode,
       etsyLiveMode,
+      reverbLiveMode,
       googleLiveMode,
     },
     user: {
@@ -2161,8 +2595,8 @@ app.get('/api/auth/status', (_req, res) => {
 
 app.post('/api/auth/connect/extension', (req, res) => {
   const { platform, listings: incoming = [], account } = req.body || {};
-  if (!IMPORT_PLATFORMS.includes(platform)) {
-    return res.status(400).json({ error: 'Invalid platform' });
+  if (!isStoreEnabled(platform)) {
+    return res.status(400).json({ error: DISABLED_PLATFORMS.has(platform) ? disabledStoreMessage(platform) : 'Invalid platform' });
   }
 
   const user = getDemoUser();
@@ -2191,6 +2625,11 @@ app.post('/api/auth/connect/extension', (req, res) => {
     user.etsyExtension = true;
     user.etsyDemo = false;
     user.etsyAccount = account || 'etsy-browser-session';
+  } else if (platform === 'reverb') {
+    user.reverbToken = 'extension';
+    user.reverbExtension = true;
+    user.reverbDemo = false;
+    user.reverbAccount = account || 'reverb-browser-session';
   }
 
   persistStore();
@@ -2213,9 +2652,13 @@ function oauthConnectResponse(platform, liveMode, redirect) {
   }
   return {
     connected: false,
-    needsOAuthCredentials: true,
-    message: `Add ${platform} OAuth credentials to .env.`,
+    useExtension: true,
+    message: `Connect ${platform} with the Chrome helper.`,
   };
+}
+
+function redirectToExtensionConnect(res, platform) {
+  return res.redirect(`/dashboard.html?connect=${platform}-extension#marketplaces`);
 }
 
 app.post('/api/auth/connect/ebay', (_req, res) => {
@@ -2223,10 +2666,9 @@ app.post('/api/auth/connect/ebay', (_req, res) => {
 });
 
 app.post('/api/auth/connect/facebook', (_req, res) => {
-  return res.json({
+  return res.status(400).json({
     connected: false,
-    requiresExtension: true,
-    message: 'Facebook Marketplace connects with the Chrome extension.',
+    error: disabledStoreMessage('facebook'),
   });
 });
 
@@ -2236,6 +2678,10 @@ app.post('/api/auth/connect/depop', (_req, res) => {
 
 app.post('/api/auth/connect/etsy', (_req, res) => {
   return res.json(oauthConnectResponse('Etsy', etsyLiveMode, '/api/auth/etsy/live'));
+});
+
+app.post('/api/auth/connect/reverb', (_req, res) => {
+  return res.json(oauthConnectResponse('Reverb', reverbLiveMode, '/api/auth/reverb/live'));
 });
 
 app.post('/api/auth/connect/poshmark', async (req, res) => {
@@ -2277,8 +2723,7 @@ app.post('/api/auth/connect/demo', (req, res) => {
     return res.json({ connected: true, mode: 'demo' });
   }
   if (platform === 'facebook') {
-    connectDemoFacebook();
-    return res.json({ connected: true, mode: 'demo' });
+    return res.status(400).json({ error: disabledStoreMessage('facebook') });
   }
   return res.status(400).json({ error: 'platform required' });
 });
@@ -2327,6 +2772,15 @@ app.post('/api/auth/disconnect', (req, res) => {
     delete user.etsyAccount;
     delete user.etsyUserId;
     delete user.etsyShopId;
+  } else if (platform === 'reverb') {
+    delete user.reverbToken;
+    delete user.reverbRefreshToken;
+    delete user.reverbTokenExpires;
+    delete user.reverbDemo;
+    delete user.reverbExtension;
+    delete user.reverbAccount;
+    delete user.reverbUserId;
+    delete user.reverbShopId;
   }
 
   persistStore();
@@ -2340,7 +2794,8 @@ app.post('/api/auth/disconnect', (req, res) => {
 // Initiate eBay OAuth flow (browser navigation)
 app.get('/api/auth/ebay', (req, res) => {
   if (!ebayLiveMode) {
-    return res.redirect('/dashboard.html?oauthError=ebay#marketplaces');
+    if (!requirePageLogin(req, res)) return;
+    return redirectToExtensionConnect(res, 'ebay');
   }
   if (!requirePageLogin(req, res)) return;
   return res.redirect('/api/auth/ebay/live');
@@ -2419,7 +2874,7 @@ app.get('/api/auth/ebay/callback', async (req, res) => {
 
 app.get(['/api/auth/facebook', '/api/auth/facebook/live', '/api/auth/facebook/callback'], (req, res) => {
   if (!requirePageLogin(req, res)) return;
-  return res.redirect('/dashboard.html?connect=facebook-extension#marketplaces');
+  return res.redirect('/dashboard.html#marketplaces');
 });
 
 // ======================
@@ -2445,7 +2900,8 @@ function getDepopScopes() {
 
 app.get('/api/auth/depop', (req, res) => {
   if (!depopLiveMode) {
-    return res.redirect('/dashboard.html?oauthError=depop#marketplaces');
+    if (!requirePageLogin(req, res)) return;
+    return redirectToExtensionConnect(res, 'depop');
   }
   if (!requirePageLogin(req, res)) return;
   return res.redirect('/api/auth/depop/live');
@@ -2603,7 +3059,8 @@ function etsyApiHeaders(accessToken) {
 
 app.get('/api/auth/etsy', (req, res) => {
   if (!etsyLiveMode) {
-    return res.redirect('/dashboard.html?oauthError=etsy#marketplaces');
+    if (!requirePageLogin(req, res)) return;
+    return redirectToExtensionConnect(res, 'etsy');
   }
   if (!requirePageLogin(req, res)) return;
   return res.redirect('/api/auth/etsy/live');
@@ -2753,6 +3210,160 @@ async function fetchLiveEtsyCandidates(user) {
 }
 
 // ======================
+// REVERB OAUTH
+// ======================
+
+function getReverbRedirectUri() {
+  return process.env.REVERB_REDIRECT_URI || `${BASE_URL}/api/auth/reverb/callback`;
+}
+
+function getReverbScopes() {
+  return process.env.REVERB_SCOPES || 'public read_listings write_listings read_orders write_orders read_profile';
+}
+
+function reverbApiHeaders(accessToken) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: 'application/hal+json',
+    'Accept-Version': '3.0',
+    'Content-Type': 'application/hal+json',
+    'User-Agent': `Crosslist/1.0 (+${BASE_URL})`,
+  };
+}
+
+app.get('/api/auth/reverb', (req, res) => {
+  if (!reverbLiveMode) {
+    if (!requirePageLogin(req, res)) return;
+    return redirectToExtensionConnect(res, 'reverb');
+  }
+  if (!requirePageLogin(req, res)) return;
+  return res.redirect('/api/auth/reverb/live');
+});
+
+app.get('/api/auth/reverb/live', (req, res) => {
+  if (!reverbLiveMode) {
+    return res.redirect('/dashboard.html?oauthError=reverb#marketplaces');
+  }
+  const state = beginOAuth(req, res, 'reverb');
+  if (!state) return;
+  const authUrl =
+    'https://reverb.com/oauth/authorize?' +
+    new URLSearchParams({
+      response_type: 'code',
+      client_id: process.env.REVERB_CLIENT_ID,
+      redirect_uri: getReverbRedirectUri(),
+      scope: getReverbScopes(),
+      state,
+    });
+  res.redirect(authUrl);
+});
+
+app.get('/api/auth/reverb/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error || !code) {
+    return res.redirect('/dashboard.html?oauthError=reverb#marketplaces');
+  }
+
+  const oauthResult = userFromOAuthState(String(state || ''));
+  if (!oauthResult?.user) {
+    return res.redirect('/dashboard.html?oauthError=reverb#marketplaces');
+  }
+
+  try {
+    const tokenResponse = await axios.post(
+      'https://reverb.com/oauth/token',
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: process.env.REVERB_CLIENT_ID,
+        client_secret: process.env.REVERB_CLIENT_SECRET,
+        redirect_uri: getReverbRedirectUri(),
+        code: String(code),
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+
+    const { access_token, refresh_token, expires_in } = tokenResponse.data;
+    let account = 'reverb-oauth';
+    let userId = null;
+    let shopId = null;
+    try {
+      const me = await axios.get('https://api.reverb.com/api/my/account', {
+        headers: reverbApiHeaders(access_token),
+      });
+      userId = me.data.id || me.data.user_id || null;
+      account = me.data.shop?.name || me.data.username || me.data.email || account;
+      shopId = me.data.shop?.id || null;
+    } catch (profileError) {
+      logError('Reverb profile lookup', profileError, { req });
+    }
+
+    const userData = oauthResult.user;
+    Object.assign(userData, {
+      reverbToken: access_token,
+      reverbRefreshToken: refresh_token,
+      reverbTokenExpires: expires_in ? Date.now() + expires_in * 1000 : null,
+      reverbDemo: false,
+      reverbExtension: false,
+      reverbAccount: account,
+      reverbUserId: userId,
+      reverbShopId: shopId,
+    });
+    userStore.saveUser(userData);
+
+    res.redirect('/dashboard.html?connected=reverb#marketplaces');
+  } catch (oauthError) {
+    logError('Reverb OAuth', oauthError, { req });
+    res.redirect('/dashboard.html?oauthError=reverb#marketplaces');
+  }
+});
+
+function reverbPhotoUrl(photo) {
+  return (
+    photo?._links?.large_crop?.href ||
+    photo?._links?.full?.href ||
+    photo?._links?.large?.href ||
+    photo?.url ||
+    ''
+  );
+}
+
+function mapReverbListing(listing) {
+  const listingId = listing.id || listing.listing_id;
+  const images = (listing.photos || []).map(reverbPhotoUrl).filter(Boolean);
+  const slug = String(listing.state?.slug || listing.state || '').toLowerCase();
+  const status = slug === 'live' || slug === 'published' || slug === 'active' ? 'active' : slug || 'active';
+  return {
+    title: listing.title || 'Untitled Item',
+    description: listing.description || '',
+    price: parseListingPrice(listing.price),
+    quantity: listing.inventory || listing.quantity || 1,
+    images,
+    platform: 'reverb',
+    platformListingId: String(listingId || ''),
+    status,
+    url: listing._links?.web?.href || listing.url || `https://reverb.com/item/${listingId}`,
+  };
+}
+
+async function fetchLiveReverbCandidates(user) {
+  if (!user.reverbToken || user.reverbDemo || user.reverbExtension) return [];
+  const listings = [];
+  let url = 'https://api.reverb.com/api/my/listings';
+  let params = { per_page: 50, state: 'all' };
+  for (let page = 0; page < 5 && url; page += 1) {
+    const response = await axios.get(url, {
+      headers: reverbApiHeaders(user.reverbToken),
+      params,
+    });
+    const batch = response.data.listings || response.data.results || [];
+    listings.push(...batch.map(mapReverbListing).filter((item) => item.platformListingId));
+    url = response.data._links?.next?.href || '';
+    params = undefined;
+  }
+  return listings;
+}
+
+// ======================
 // LISTING ENDPOINTS
 // ======================
 
@@ -2788,76 +3399,8 @@ app.get('/api/listings/ebay', async (req, res) => {
 });
 
 // Get user's listings from Facebook Marketplace
-app.get('/api/listings/facebook', async (req, res) => {
-  try {
-    const userData = getDemoUser();
-    
-    if (!userData || !userData.facebookToken) {
-      return res.status(401).json({ error: 'Not authenticated with Facebook' });
-    }
-
-    if (userData.facebookDemo) {
-      const demoListings = seedDemoFacebookListings();
-      return res.json(demoListings);
-    }
-
-    if (userData.facebookExtension) {
-      const extensionListings = Array.from(listings.values()).filter((l) => listingHasPlatform(l, 'facebook'));
-      return res.json(extensionListings);
-    }
-    
-    // Get user's pages
-    const pagesResponse = await axios.get('https://graph.facebook.com/v18.0/me/accounts', {
-      params: {
-        access_token: userData.facebookToken
-      }
-    });
-    
-    if (!pagesResponse.data.data.length) {
-      return res.json([]); // No pages, return empty listings
-    }
-    
-    // Use the first page for simplicity
-    const pageAccessToken = pagesResponse.data.data[0].access_token;
-    
-    // Fetch products from Facebook Catalog (simplified - in reality would need catalog setup)
-    // For demo, we'll return mock data or try to fetch from a test catalog
-    try {
-      const catalogResponse = await axios.get('https://graph.facebook.com/v18.0/me/product_catalogs', {
-        params: {
-          access_token: pageAccessToken
-        }
-      });
-      
-      if (catalogResponse.data.data.length) {
-        const catalogId = catalogResponse.data.data[0].id;
-        const productsResponse = await axios.get(`https://graph.facebook.com/v18.0/${catalogId}/products`, {
-          params: {
-            access_token: pageAccessToken,
-            fields: 'id,title,description,price,image_url,availability,quantity'
-          }
-        });
-        
-        const facebookListings = (productsResponse.data.data || []).map((product) =>
-          upsertImportedListing(mapFacebookCatalogProduct(product))
-        );
-
-        res.json(facebookListings);
-      } else {
-        // No catalog, return empty array for demo
-        res.json([]);
-      }
-    } catch (catalogError) {
-      // If catalog access fails, return mock data for demo purposes
-      logError('Facebook catalog access', catalogError, { req });
-      
-      const mockListings = seedDemoInventory();
-      res.json(mockListings);
-    }
-  } catch (error) {
-    logError('Facebook listings fetch', error, { req });
-    res.status(500).json({ error: 'Failed to fetch Facebook listings' });
-  }
+app.get('/api/listings/facebook', (_req, res) => {
+  return res.status(400).json({ error: disabledStoreMessage('facebook') });
 });
 
 app.get('/api/listings/depop', (_req, res) => {
@@ -2897,10 +3440,30 @@ app.get('/api/listings/etsy', async (_req, res) => {
   }
 });
 
+app.get('/api/listings/reverb', async (_req, res) => {
+  const userData = getDemoUser();
+  if (!userData.reverbToken) {
+    return res.status(401).json({ error: 'Not authenticated with Reverb' });
+  }
+  if (userData.reverbDemo) {
+    return res.json(buildReverbMarketplaceCandidates(new Date().toISOString()));
+  }
+  if (userData.reverbExtension) {
+    return res.json(Array.from(listings.values()).filter((l) => listingHasPlatform(l, 'reverb')));
+  }
+  try {
+    const candidates = await fetchLiveReverbCandidates(userData);
+    return res.json(candidates);
+  } catch (error) {
+    logError('Reverb listings fetch', error, { req });
+    return res.json(Array.from(listings.values()).filter((l) => listingHasPlatform(l, 'reverb')));
+  }
+});
+
 app.get('/api/listings/import/candidates', async (req, res) => {
   const platform = String(req.query.platform || '');
-  if (!IMPORT_PLATFORMS.includes(platform)) {
-    return res.status(400).json({ error: 'Invalid platform' });
+  if (!isStoreEnabled(platform)) {
+    return res.status(400).json({ error: DISABLED_PLATFORMS.has(platform) ? disabledStoreMessage(platform) : 'Invalid platform' });
   }
 
   const user = getDemoUser();
@@ -2942,6 +3505,14 @@ app.get('/api/listings/import/candidates', async (req, res) => {
       logError('Etsy import preview', error, { req });
       return res.status(500).json({ error: 'Failed to fetch Etsy listings' });
     }
+  } else if (mode === 'live' && platform === 'reverb' && user.reverbToken) {
+    try {
+      candidates = await fetchLiveReverbCandidates(user);
+      source = 'live';
+    } catch (error) {
+      logError('Reverb import preview', error, { req });
+      return res.status(500).json({ error: 'Failed to fetch Reverb listings' });
+    }
   }
 
   return res.json({
@@ -2954,8 +3525,8 @@ app.get('/api/listings/import/candidates', async (req, res) => {
 
 app.post('/api/listings/import', async (req, res) => {
   const { platform, listings: incoming = [], mode, account } = req.body || {};
-  if (!IMPORT_PLATFORMS.includes(platform)) {
-    return res.status(400).json({ error: 'Invalid platform' });
+  if (!isStoreEnabled(platform)) {
+    return res.status(400).json({ error: DISABLED_PLATFORMS.has(platform) ? disabledStoreMessage(platform) : 'Invalid platform' });
   }
   if (!Array.isArray(incoming) || incoming.length === 0) {
     return res.status(400).json({ error: 'Select at least one listing to import' });
@@ -3111,7 +3682,7 @@ app.post('/api/listings/image-matches/resolve', (req, res) => {
 });
 
 async function applyListingUpdates(listing, updates, userData) {
-  const { platforms: platformUpdates, ...safeUpdates } = updates || {};
+  const { platforms: platformUpdates, images: imageUpdates, ...safeUpdates } = updates || {};
   if ('category' in safeUpdates) safeUpdates.category = cleanCategory(safeUpdates.category);
   if ('details' in safeUpdates) safeUpdates.details = cleanDetails(safeUpdates.details);
   let nextPlatforms = platformUpdates
@@ -3126,12 +3697,16 @@ async function applyListingUpdates(listing, updates, userData) {
       ])
     );
   }
-  const updatedListing = toUnifiedListing({
+  let updatedListing = toUnifiedListing({
     ...listing,
     ...safeUpdates,
     platforms: nextPlatforms,
     lastUpdated: new Date().toISOString(),
   });
+  if (imageUpdates !== undefined) {
+    const imageList = await persistListingImages(userData.id, imageUpdates);
+    updatedListing = applyListingImages(updatedListing, imageList);
+  }
   listings.set(listing.id, updatedListing);
 
   const platforms = getPlatforms(updatedListing);
@@ -3180,7 +3755,7 @@ async function pushLiveMarketplacePrice(listing, platforms, userData) {
 app.post(
   '/api/uploads',
   express.raw({ type: () => true, limit: '10mb' }),
-  (req, res) => {
+  async (req, res) => {
     const user = getDemoUser();
     const body = req.body;
     if (!Buffer.isBuffer(body) || !body.length) {
@@ -3194,17 +3769,22 @@ app.post(
       return res.status(400).json({ error: 'Send the image as a file, not JSON' });
     }
     const filename = decodeURIComponent(String(req.headers['x-filename'] || 'photo.jpg'));
-    const owner = safeUserId(user.id);
-    const dir = path.join(UPLOADS_DIR, owner);
-    fs.mkdirSync(dir, { recursive: true });
-    const name = `${uuidv4()}.${extFromMime(mime, filename)}`;
-    fs.writeFileSync(path.join(dir, name), body);
-    const url = `/uploads/${owner}/${name}`;
-    return res.status(201).json({ url, filename: name });
+    try {
+      const stored = await toStoredImage(body, mime, filename);
+      const owner = safeUserId(user.id);
+      const dir = path.join(UPLOADS_DIR, owner);
+      fs.mkdirSync(dir, { recursive: true });
+      const name = `${uuidv4()}.${stored.ext}`;
+      fs.writeFileSync(path.join(dir, name), stored.buffer);
+      const url = `/uploads/${owner}/${name}`;
+      return res.status(201).json({ url, filename: name });
+    } catch {
+      return res.status(400).json({ error: "Couldn't read that photo. Export it as JPEG and try again." });
+    }
   }
 );
 
-const LISTING_CATEGORIES = new Set(['clothing', 'furniture', 'home', 'tech', 'tickets', 'other']);
+const LISTING_CATEGORIES = new Set(['clothing', 'furniture', 'home', 'tech', 'tickets', 'music', 'other']);
 
 function cleanCategory(value) {
   const category = String(value || '').toLowerCase();
@@ -3224,7 +3804,7 @@ function cleanDetails(value) {
   return out;
 }
 
-app.post('/api/listings', (req, res) => {
+app.post('/api/listings', async (req, res) => {
   const { title, description, price, quantity, images, platforms: requestedPlatforms, sku, condition, category, details } = req.body || {};
   if (!title) {
     return res.status(400).json({ error: 'Title is required' });
@@ -3232,9 +3812,9 @@ app.post('/api/listings', (req, res) => {
 
   const userData = getDemoUser();
   const parsedPrice = parseListingPrice(price);
-  const imageList = persistListingImages(userData.id, images || []);
+  const imageList = await persistListingImages(userData.id, images || []);
   const stores = requestedPushPlatforms(userData, requestedPlatforms);
-  const targetStores = stores.length ? stores : IMPORT_PLATFORMS.map((id) => ({ id, mode: 'none' }));
+  const targetStores = stores.length ? stores : IMPORT_PLATFORMS.filter(isStoreEnabled).map((id) => ({ id, mode: 'none' }));
   const platforms = {};
   for (const store of targetStores) {
     platforms[store.id] = pendingPlatformEntry(
@@ -3288,7 +3868,7 @@ app.post('/api/listings/:id/push', async (req, res) => {
       extensionTasks: pushed.extensionTasks,
     });
   } catch (error) {
-    console.error('Push listing failed:', error.response?.data || error.message);
+    logError('Push listing', error, { req });
     return res.status(error.status || 500).json({ error: error.message || 'Failed to list item' });
   }
 });
@@ -3297,20 +3877,47 @@ app.post('/api/listings/:id/listed', (req, res) => {
   const listing = listings.get(req.params.id);
   if (!listing) return res.status(404).json({ error: 'Listing not found' });
 
+  const source = req.body?.source || 'extension';
   const incoming = Array.isArray(req.body?.results) ? req.body.results : [req.body];
+  req.body = { source, results: incoming.map(slimListingResult) };
   let next = toUnifiedListing(listing);
   for (const result of incoming) {
     const platform = String(result?.platform || '').toLowerCase();
     if (!IMPORT_PLATFORMS.includes(platform)) continue;
     next = applyPlatformResult(next, platform, result);
+    if (!isListingFailure(result)) continue;
+    const failure = result.failure && typeof result.failure === 'object' ? result.failure : {};
+    recordListingFailure({
+      ...failure,
+      listingId: failure.listingId || next.id,
+      title: failure.title || next.title,
+      platform,
+      error: failure.error || result.error,
+      step: failure.step || result.detail?.step || null,
+      status: failure.status ?? result.detail?.status,
+      source: failure.source || result.detail?.source || source,
+    }, req);
   }
   listings.set(next.id, next);
   recordActivity('info', `Listing results saved for "${next.title}"`, {
-    source: req.body?.source || 'extension',
+    source,
     listingId: next.id,
-    results: incoming,
+    results: req.body.results,
   });
   return res.json({ listing: next });
+});
+
+app.post('/api/listing-failures', (req, res) => {
+  const incoming = Array.isArray(req.body?.failures) ? req.body.failures.slice(0, 20) : [];
+  req.body = { count: incoming.length };
+  const saved = [];
+  const dropped = [];
+  for (const raw of incoming) {
+    const outcome = recordListingFailure(raw, req);
+    if (outcome.id) saved.push(outcome.id);
+    else if (outcome.dropped) dropped.push(outcome.dropped);
+  }
+  return res.json({ saved, dropped });
 });
 
 app.patch('/api/listings/bulk', async (req, res) => {
@@ -3584,81 +4191,8 @@ app.post('/api/listings/ebay', async (req, res) => {
 });
 
 // Create a new listing on Facebook (simplified - creates a product in catalog)
-app.post('/api/listings/facebook', async (req, res) => {
-  try {
-    const { title, description, price, quantity, images } = req.body;
-    const userData = getDemoUser();
-    
-    if (!userData || !userData.facebookToken) {
-      return res.status(401).send('Not authenticated with Facebook');
-    }
-    
-    // Get user's pages
-    const pagesResponse = await axios.get('https://graph.facebook.com/v18.0/me/accounts', {
-      params: {
-        access_token: userData.facebookToken
-      }
-    });
-    
-    if (!pagesResponse.data.data.length) {
-      return res.status(400).send('No Facebook pages found');
-    }
-    
-    const pageAccessToken = pagesResponse.data.data[0].access_token;
-    
-    // Get product catalogs
-    const catalogsResponse = await axios.get('https://graph.facebook.com/v18.0/me/product_catalogs', {
-      params: {
-        access_token: pageAccessToken
-      }
-    });
-    
-    if (!catalogsResponse.data.data.length) {
-      return res.status(400).send('No product catalog found. Please create a catalog first.');
-    }
-    
-    const catalogId = catalogsResponse.data.data[0].id;
-    
-    // Create product in catalog
-    const productResponse = await axios.post(`https://graph.facebook.com/v18.0/${catalogId}/products`,
-      {
-        title: title || '',
-        description: description || '',
-        price: price?.toString() || '0',
-        quantity: quantity || 0,
-        // Note: Image handling would require uploading to Facebook first
-        image_url: images && images.length > 0 ? images[0] : '',
-        availability: quantity > 0 ? 'in_stock' : 'out_of_stock',
-        condition: 'NEW'
-      },
-      {
-        params: {
-          access_token: pageAccessToken
-        }
-      }
-    );
-    
-    const listingId = `fb_${productResponse.data.id}`;
-    const newListing = {
-      id: listingId,
-      title,
-      description,
-      price: parseFloat(price || 0),
-      quantity: quantity || 0,
-      images: images || [],
-      platform: 'facebook',
-      platformListingId: productResponse.data.id,
-      status: quantity > 0 ? 'active' : 'inactive',
-      lastUpdated: new Date().toISOString()
-    };
-    
-    listings.set(listingId, newListing);
-    
-    res.status(201).json(newListing);
-  } catch (error) {
-    logError('Create Facebook listing', error, { req });
-    res.status(500).json({ error: 'Failed to create Facebook listing' });
-  }
+app.post('/api/listings/facebook', (_req, res) => {
+  return res.status(400).json({ error: disabledStoreMessage('facebook') });
 });
 
 // Delete a listing

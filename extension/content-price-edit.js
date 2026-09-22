@@ -111,6 +111,17 @@ async function maybeOpenEditor(platform) {
       await sleep(2500);
     }
   }
+  if (platform === 'reverb' && !/\/edit/i.test(path)) {
+    const editLink = [...document.querySelectorAll('a, button')].find((el) => {
+      const href = el.getAttribute('href') || '';
+      const text = buttonText(el);
+      return /\/selling\/\d+\/edit|\/edit/i.test(href) || text === 'edit' || text === 'edit listing';
+    });
+    if (editLink) {
+      editLink.click();
+      await sleep(2500);
+    }
+  }
 }
 
 const PLATFORM_SELECTORS = {
@@ -119,6 +130,7 @@ const PLATFORM_SELECTORS = {
   depop: ['input[name="price"]', 'input[id="price"]', 'input[autocomplete="transaction-amount"]'],
   poshmark: ['input[name="listing_price"]', '#listing_price', 'input[data-test="price"]', 'input[name="price"]'],
   etsy: ['input[name="price"]', '#listing-price', 'input[id*="price" i]'],
+  reverb: ['input[name="price"]', 'input[id*="price" i]', 'input[placeholder*="price" i]'],
 };
 
 const SAVE_LABELS = {
@@ -127,6 +139,7 @@ const SAVE_LABELS = {
   depop: ['save', 'update', 'publish', 'post'],
   poshmark: ['update listing', 'save listing', 'save changes', 'update', 'save'],
   etsy: ['publish', 'update', 'save and continue', 'save'],
+  reverb: ['save', 'update', 'publish', 'list it'],
 };
 
 async function updateListingPrice(platform, targetPrice) {

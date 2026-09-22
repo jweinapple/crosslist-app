@@ -11,7 +11,7 @@
   if (!root) return;
 
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var STORES = ['ebay', 'facebook', 'depop', 'poshmark', 'etsy'];
+  var STORES = ['ebay', 'depop', 'poshmark', 'etsy', 'reverb'];
   var STEP_LABELS = ['Create your account', 'Link a store', 'Add an item', 'Post on 2 stores'];
   var RING_R = 34;
   var RING_C = 2 * Math.PI * RING_R;

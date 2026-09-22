@@ -1,6 +1,6 @@
 # Crosslist
 
-A seller dashboard for inventory, import, and listing across eBay, Facebook Marketplace, Depop, Poshmark, and Etsy.
+A seller dashboard for inventory, import, and listing across eBay, Facebook Marketplace, Depop, Poshmark, Etsy, and Reverb.
 
 ## What it does
 
@@ -36,7 +36,7 @@ Reload the extension after you pull updates.
 
 ## Deploy
 
-This app can run on Vercel. After deploy, set `BASE_URL` to your public site URL and use that same origin for every OAuth redirect URI in your marketplace developer consoles.
+This app can run on Vercel. After deploy, set `BASE_URL` to your public site URL, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and register that same origin plus `/api/auth/google/callback` in Google Cloud. Do not copy localhost redirect URIs into Vercel.
 
 ## Safety
 

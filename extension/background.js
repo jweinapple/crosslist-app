@@ -1,4 +1,6 @@
 import './scrape-utils.js';
+import { ebaySessionOk, listOnReverb, resolveEbayListingPage, reverbSessionOk } from './create-listings.js';
+import { compactListingFailure } from './listing-failure.js';
 
 const { parseApiMoney, parseMoney, isJunkTitle, cleanTitle } = globalThis.CrosslistScrape;
 
@@ -17,6 +19,9 @@ const POSHMARK_LOGIN = 'https://poshmark.com/login';
 const ETSY_LISTINGS = 'https://www.etsy.com/your/shops/me/tools/listings';
 const ETSY_LOGIN = 'https://www.etsy.com/signin';
 
+const REVERB_SELLING = 'https://reverb.com/my/selling/listings?state=live';
+const REVERB_LOGIN = `https://reverb.com/signin?return_to=${encodeURIComponent('/my/selling/listings?state=live')}`;
+
 function facebookLoginUrl() {
   const next = encodeURIComponent(FB_SELLING);
   return `https://www.facebook.com/login.php?next=${next}`;
@@ -33,6 +38,7 @@ const CONTENT_SCRIPTS = {
   SCRAPE_DEPOP_LISTINGS: ['scrape-utils.js', 'content-depop.js'],
   SCRAPE_POSHMARK_LISTINGS: ['scrape-utils.js', 'content-poshmark.js'],
   SCRAPE_ETSY_LISTINGS: ['scrape-utils.js', 'content-etsy.js'],
+  SCRAPE_REVERB_LISTINGS: ['scrape-utils.js', 'content-reverb.js'],
 };
 
 function sleep(ms) {
@@ -63,6 +69,33 @@ function attachLog(result, steps) {
   if (!result || typeof result !== 'object') return result;
   const existing = Array.isArray(result.log) ? result.log : [];
   return { ...result, log: [...existing, ...(steps || [])] };
+}
+
+const LISTING_FAILURE_KEY = 'listingFailureLog';
+const LISTING_FAILURE_LIMIT = 20;
+
+async function rememberListingFailure(entry) {
+  if (!entry?.id) return;
+  try {
+    const stored = await chrome.storage.local.get(LISTING_FAILURE_KEY);
+    const rows = Array.isArray(stored[LISTING_FAILURE_KEY]) ? stored[LISTING_FAILURE_KEY] : [];
+    const next = rows.filter((row) => row?.id !== entry.id);
+    next.push(entry);
+    await chrome.storage.local.set({ [LISTING_FAILURE_KEY]: next.slice(-LISTING_FAILURE_LIMIT) });
+  } catch (error) {
+    logError('rememberListingFailure', error);
+  }
+}
+
+async function listingFailureLog(ackIds = []) {
+  const stored = await chrome.storage.local.get(LISTING_FAILURE_KEY);
+  const rows = Array.isArray(stored[LISTING_FAILURE_KEY]) ? stored[LISTING_FAILURE_KEY] : [];
+  const drop = new Set((Array.isArray(ackIds) ? ackIds : []).map((id) => String(id || '')).filter(Boolean));
+  const next = drop.size ? rows.filter((row) => !drop.has(String(row?.id || ''))) : rows;
+  if (next.length !== rows.length) {
+    await chrome.storage.local.set({ [LISTING_FAILURE_KEY]: next });
+  }
+  return { failures: next };
 }
 
 function urlsMatch(a = '', b = '') {
@@ -158,6 +191,7 @@ async function scrapeViaPageFunction(tabId, command) {
 async function scrapeFromTab(tabId, command, attempts = 4, trace) {
   await waitForTabLoad(tabId);
   let lastError;
+  let lastResponse = null;
   trace?.note(`Waiting for page before ${command}`);
 
   for (let i = 0; i < attempts; i += 1) {
@@ -165,13 +199,15 @@ async function scrapeFromTab(tabId, command, attempts = 4, trace) {
     try {
       const response = await chrome.tabs.sendMessage(tabId, { command });
       if (response) {
+        lastResponse = response;
         trace?.note(`Scrape attempt ${i + 1} returned ${response.listings?.length || 0} listing(s)`, {
           pageState: response.pageState,
           url: response.url,
           loggedIn: response.loggedIn,
+          ready: response.ready,
           ...(response.debug || {}),
         });
-        return response;
+        if (response.ready !== false) return response;
       }
     } catch (error) {
       lastError = error;
@@ -180,13 +216,15 @@ async function scrapeFromTab(tabId, command, attempts = 4, trace) {
       try {
         const injected = await scrapeViaPageFunction(tabId, command);
         if (injected) {
+          lastResponse = injected;
           trace?.note(`Injected scrape returned ${injected.listings?.length || 0} listing(s)`, {
             pageState: injected.pageState,
             url: injected.url,
             loggedIn: injected.loggedIn,
+            ready: injected.ready,
             ...(injected.debug || {}),
           });
-          return injected;
+          if (injected.ready !== false) return injected;
         }
       } catch (injectError) {
         lastError = injectError;
@@ -195,6 +233,7 @@ async function scrapeFromTab(tabId, command, attempts = 4, trace) {
     }
   }
 
+  if (lastResponse) return lastResponse;
   throw lastError || new Error('Could not communicate with page content script');
 }
 
@@ -210,7 +249,7 @@ function marketplaceConnection(scraped, { platform, sessionHint = false } = {}) 
   const loggedIn = Boolean(scraped.loggedIn || (sessionHint && pageState !== 'login'));
   const onSellingPage =
     pageState === 'selling' ||
-    ((pageState === 'profile' || pageState === 'session') && loggedIn) ||
+    ((pageState === 'profile' || pageState === 'session' || pageState === 'shop') && loggedIn) ||
     url.includes('/marketplace/you/selling') ||
     url.includes('/marketplace/profile/') ||
     isEbayAuthenticatedUrl(url) ||
@@ -219,10 +258,14 @@ function marketplaceConnection(scraped, { platform, sessionHint = false } = {}) 
     url.includes('poshmark.com/closet') ||
     url.includes('poshmark.com/listing') ||
     url.includes('etsy.com/your/shops') ||
-    url.includes('etsy.com/listing');
+    url.includes('etsy.com/listing') ||
+    url.includes('reverb.com/my/selling') ||
+    url.includes('reverb.com/my/listings') ||
+    (loggedIn && /reverb\.com\/shop\//i.test(url));
 
   const needsLogin =
     pageState === 'login' ||
+    pageState === 'unavailable' ||
     (!loggedIn && (pageState === 'home' || pageState === 'profile' || (!onSellingPage && listings.length === 0)));
 
   const debug = {
@@ -272,6 +315,7 @@ async function connectMarketplace({
   scrapeCommand,
   sessionHint = false,
   fallbackUrls = [],
+  scrapeAttempts = 4,
 }) {
   const trace = createTrace(platform);
   trace.note(`Opening ${targetUrl}`, { sessionHint: Boolean(sessionHint) });
@@ -280,7 +324,7 @@ async function connectMarketplace({
 
   const scrape = async () => {
     try {
-      return await scrapeFromTab(tab.id, scrapeCommand, 4, trace);
+      return await scrapeFromTab(tab.id, scrapeCommand, scrapeAttempts, trace);
     } catch (error) {
       trace.note(`Could not scrape tab: ${error.message}`);
       return {
@@ -296,12 +340,18 @@ async function connectMarketplace({
   };
 
   let scraped = await scrape();
-  const loginLike = scraped.pageState === 'login' || /\/login|checkpoint/i.test(scraped.url || '');
-  if (!(scraped.listings || []).length && !loginLike) {
+  const loginLike = scraped.pageState === 'login'
+    || scraped.pageState === 'unavailable'
+    || /\/login|\/signin|checkpoint/i.test(scraped.url || '');
+  const settled = Boolean(
+    scraped.loggedIn && (scraped.pageState === 'selling' || scraped.pageState === 'shop' || scraped.ready)
+  );
+  if (!(scraped.listings || []).length && !loginLike && !settled) {
     const urls = [targetUrl, ...fallbackUrls];
     const seen = new Set();
     for (const url of urls) {
       if ((scraped.listings || []).length) break;
+      if (scraped.loggedIn && scraped.pageState === 'selling') break;
       if (seen.has(url) || urlsMatch(url, scraped.url)) continue;
       seen.add(url);
       trace.note(`Retrying listings page ${url}`);
@@ -377,12 +427,7 @@ async function connectFacebook() {
 }
 
 async function hasEbaySessionCookie() {
-  const cookies = [
-    ...(await chrome.cookies.getAll({ domain: 'ebay.com' })),
-    ...(await chrome.cookies.getAll({ domain: 'ebay.co.uk' })),
-  ];
-  const names = new Set(cookies.map((cookie) => cookie.name));
-  return names.has('s');
+  return ebaySessionOk();
 }
 
 async function connectEbay() {
@@ -648,6 +693,22 @@ async function connectEtsy() {
   });
 }
 
+async function connectReverb() {
+  const sessionHint = await reverbSessionOk();
+  return connectMarketplace({
+    platform: 'Reverb',
+    targetUrl: REVERB_SELLING,
+    loginUrl: REVERB_LOGIN,
+    scrapeCommand: 'SCRAPE_REVERB_LISTINGS',
+    sessionHint,
+    scrapeAttempts: 8,
+    fallbackUrls: [
+      'https://reverb.com/my/selling/listings',
+      'https://reverb.com/my/listings',
+    ],
+  });
+}
+
 async function connectDepop() {
   const token = await getDepopAccessToken();
   const trace = createTrace('Depop');
@@ -727,6 +788,13 @@ const PRICE_EDIT = {
     urls: (id) => [
       `https://www.etsy.com/your/shops/me/listing-editor/edit/${encodeURIComponent(id)}`,
       `https://www.etsy.com/listing/${encodeURIComponent(id)}/edit`,
+    ],
+  },
+  reverb: {
+    files: ['content-price-edit.js'],
+    urls: (id) => [
+      `https://reverb.com/selling/${encodeURIComponent(id)}/edit`,
+      `https://reverb.com/item/${encodeURIComponent(id)}`,
     ],
   },
 };
@@ -899,11 +967,15 @@ async function applyFacebookPrices(listings = []) {
 }
 
 const CREATE_URLS = {
-  ebay: 'https://www.ebay.com/sl/list',
   facebook: 'https://www.facebook.com/marketplace/create/item',
+  ebay: 'https://www.ebay.com/sl/prelist/suggest',
   depop: 'https://www.depop.com/products/create/',
   poshmark: 'https://poshmark.com/create-listing',
   etsy: 'https://www.etsy.com/your/shops/me/tools/listings/create',
+};
+
+const SESSION_LISTERS = {
+  reverb: listOnReverb,
 };
 
 function absoluteImageUrl(url, dashboardOrigin) {
@@ -914,24 +986,48 @@ function absoluteImageUrl(url, dashboardOrigin) {
   return value;
 }
 
+function arrayBufferToDataUrl(buffer, mime = 'image/jpeg') {
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x2000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+
+function withTimeout(promise, ms, fallback) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      }
+    );
+  });
+}
+
 async function fetchImageAsDataUrl(url, dashboardOrigin) {
   const abs = absoluteImageUrl(url, dashboardOrigin);
   if (!abs) return '';
   if (abs.startsWith('data:image/')) return abs;
-  try {
-    const response = await fetch(abs);
-    if (!response.ok) return abs;
-    const blob = await response.blob();
-    const buffer = await blob.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    const mime = blob.type || 'image/jpeg';
-    return `data:${mime};base64,${btoa(binary)}`;
-  } catch (error) {
-    logError('fetch listing image', error, { url: abs });
-    return abs;
-  }
+  return withTimeout(
+    (async () => {
+      const response = await fetch(abs);
+      if (!response.ok) return '';
+      const blob = await response.blob();
+      if (!blob.size || blob.size > 8 * 1024 * 1024) return '';
+      const buffer = await blob.arrayBuffer();
+      return arrayBufferToDataUrl(buffer, blob.type || 'image/jpeg');
+    })(),
+    8000,
+    ''
+  );
 }
 
 async function createMarketplaceListings(payload = {}) {
@@ -942,106 +1038,199 @@ async function createMarketplaceListings(payload = {}) {
   const results = [];
 
   const images = [];
-  for (const image of listing.images || []) {
-    images.push(await fetchImageAsDataUrl(image, dashboardOrigin));
+  for (const image of (listing.images || []).slice(0, 8)) {
+    const dataUrl = await fetchImageAsDataUrl(image, dashboardOrigin);
+    if (dataUrl) images.push(dataUrl);
   }
-  const prepared = { ...listing, images: images.filter(Boolean) };
-  trace.note(`Listing "${prepared.title || prepared.id}" on ${platforms.join(', ') || 'no stores'}`);
+  const prepared = { ...listing, images };
+  trace.note(
+    `Listing "${prepared.title || prepared.id}" on ${platforms.join(', ') || 'no stores'} with ${images.length} photo${images.length === 1 ? '' : 's'}`
+  );
 
   for (const platform of platforms) {
-    const createUrl = CREATE_URLS[platform];
-    if (!createUrl) {
-      results.push({ platform, success: false, error: `Unknown store: ${platform}` });
-      continue;
-    }
-
-    trace.note(`Opening ${platform} create page`);
+    const stepStart = trace.steps.length;
+    const sessionLister = SESSION_LISTERS[platform];
     let tab;
     let response;
-    try {
-      tab = await chrome.tabs.create({ url: createUrl, active: true });
-      await waitForTabLoad(tab.id);
-      await sleep(2200);
-      try {
-        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-create.js'] });
-      } catch (error) {
-        logError('inject create script', error, { platform });
-      }
-      await sleep(500);
 
-      let lastError;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (sessionLister) {
+      trace.note(`Listing on ${platform} from Crosslist`);
+      try {
+        response = await sessionLister(prepared, trace);
+      } catch (error) {
+        logError('createMarketplaceListings', error, { platform, ...(error.detail || {}) });
+        response = { success: false, error: error.message, needsReview: false, detail: error.detail };
+      }
+    } else {
+      let createUrl = CREATE_URLS[platform];
+      if (platform === 'ebay' && !response) {
         try {
-          response = await chrome.tabs.sendMessage(tab.id, {
-            command: 'CREATE_MARKETPLACE_LISTING',
-            payload: { platform, listing: prepared },
-          });
-          if (response) break;
-        } catch (error) {
-          lastError = error;
-          await sleep(900 + attempt * 400);
-          try {
-            await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-create.js'] });
-          } catch (injectError) {
-            logError('retry inject create script', injectError, { platform });
+          const resolved = await resolveEbayListingPage(prepared, trace);
+          if (resolved.error) {
+            response = {
+              success: false,
+              error: resolved.error,
+              needsReview: false,
+              detail: resolved.detail,
+            };
+          } else {
+            createUrl = resolved.url || createUrl;
           }
+        } catch (error) {
+          logError('createMarketplaceListings', error, { platform, ...(error.detail || {}) });
+          response = { success: false, error: error.message, needsReview: false, detail: error.detail };
         }
       }
-      if (!response) {
-        response = {
-          success: false,
-          needsReview: true,
-          url: createUrl,
-          error: lastError?.message || 'Could not fill the listing form',
-        };
+      if (!response && !createUrl) {
+        response = { success: false, error: `Unknown store: ${platform}` };
+      } else if (!response) {
+        trace.note(`Listing on ${platform} from Crosslist`);
+        try {
+          tab = await chrome.tabs.create({ url: createUrl, active: false });
+          await waitForTabLoad(tab.id);
+          await sleep(platform === 'ebay' ? 3500 : 2200);
+          try {
+            await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-create.js'] });
+          } catch (error) {
+            logError('inject create script', error, { platform });
+          }
+          await sleep(500);
+
+          let lastError;
+          for (let attempt = 0; attempt < 4; attempt += 1) {
+            try {
+              response = await chrome.tabs.sendMessage(tab.id, {
+                command: 'CREATE_MARKETPLACE_LISTING',
+                payload: { platform, listing: prepared },
+              });
+              if (response) break;
+            } catch (error) {
+              lastError = error;
+              await sleep(900 + attempt * 400);
+              try {
+                await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-create.js'] });
+              } catch (injectError) {
+                logError('retry inject create script', injectError, { platform });
+              }
+            }
+          }
+          if (!response) {
+            response = {
+              success: false,
+              needsReview: false,
+              error: lastError?.message || `Could not list on ${platform}`,
+            };
+          }
+        } catch (error) {
+          logError('createMarketplaceListings', error, { platform });
+          response = { success: false, error: error.message, needsReview: false };
+        }
       }
-    } catch (error) {
-      logError('createMarketplaceListings', error, { platform });
-      response = { success: false, error: error.message, needsReview: true, url: createUrl };
     }
 
     const listed = Boolean(response?.published && response?.listingId);
-    results.push({
+    // The content script fills the store's composer and leaves the seller to finish it.
+    // That is a pending listing, not a failure, so keep it distinct from a real error.
+    const needsReview = !listed && Boolean(response?.success) && Boolean(response?.filled);
+    const row = {
       platform,
-      status: listed ? 'active' : response?.success === false && !response?.needsReview ? 'error' : 'listing',
+      status: listed ? 'active' : needsReview ? 'listing' : 'error',
       listingId: response?.listingId || null,
-      url: response?.url || createUrl,
-      needsReview: Boolean(response?.needsReview || !listed),
-      error: response?.error || null,
+      url: listed || needsReview ? response?.url || null : null,
+      needsReview,
+      error: listed || needsReview ? null : response?.error || `Could not list on ${platform}`,
       filled: Boolean(response?.filled),
-    });
+      detail: listed ? undefined : response?.detail,
+    };
     trace.note(
       listed
         ? `${platform} listed as ${response.listingId}`
-        : `${platform} form ${response?.filled ? 'filled' : 'opened'} — review and publish`
+        : needsReview
+          ? `${platform} form filled - review and publish it in the tab Crosslist opened`
+          : `${platform} listing failed: ${response?.error || 'unknown error'}`
     );
+    if (row.status === 'error') {
+      row.failure = compactListingFailure(prepared, platform, response, trace.steps.slice(stepStart));
+      await rememberListingFailure(row.failure);
+    }
+    results.push(row);
 
-    if (listed && tab?.id) {
-      await sleep(1200);
-      await chrome.tabs.remove(tab.id).catch((closeError) => logError('close create tab', closeError, { platform }));
+    if (tab?.id) {
+      if (needsReview) {
+        // Leave the prefilled composer open so the seller can finish it.
+        // Do not focus it mid-run: later platforms still need to open their own tabs.
+        trace.note(`Left the ${platform} tab open for review`);
+      } else {
+        await sleep(listed ? 800 : 0);
+        await chrome.tabs.remove(tab.id).catch((closeError) => logError('close create tab', closeError, { platform }));
+      }
     }
   }
 
-  return attachLog({ success: results.some((row) => row.status === 'active' || row.filled || row.needsReview), results }, trace.steps);
+  return attachLog(
+    { success: results.some((row) => row.status === 'active' || row.needsReview), results },
+    trace.steps
+  );
 }
 
-async function sessionStatus() {
+async function sessionStatus(payload = {}) {
+  const wanted = new Set(
+    Array.isArray(payload.platforms) && payload.platforms.length
+      ? payload.platforms
+      : ['ebay', 'reverb']
+  );
+  const ebaySession = wanted.has('ebay') ? await ebaySessionOk() : undefined;
+  const reverbSession = wanted.has('reverb') ? await reverbSessionOk() : undefined;
   return {
     extensionInstalled: true,
     facebook: { target: FB_SELLING },
-    ebay: { target: EBAY_ACTIVE },
+    ebay: {
+      target: EBAY_ACTIVE,
+      ...(ebaySession === undefined ? {} : { session: ebaySession }),
+    },
     depop: { target: DEPOP_SELLING, login: DEPOP_LOGIN },
     poshmark: { target: POSHMARK_CLOSET, login: POSHMARK_LOGIN },
     etsy: { target: ETSY_LISTINGS, login: ETSY_LOGIN },
+    reverb: {
+      target: REVERB_SELLING,
+      login: REVERB_LOGIN,
+      ...(reverbSession === undefined ? {} : { session: reverbSession }),
+    },
   };
 }
+
+const EXTENSION_VERSION = '0.6.7';
+const EXTENSION_COMMANDS = [
+  'PING',
+  'SESSION_STATUS',
+  'CONNECT_FACEBOOK',
+  'IMPORT_FACEBOOK',
+  'CONNECT_EBAY',
+  'IMPORT_EBAY',
+  'CONNECT_DEPOP',
+  'IMPORT_DEPOP',
+  'CONNECT_POSHMARK',
+  'IMPORT_POSHMARK',
+  'CONNECT_ETSY',
+  'IMPORT_ETSY',
+  'CONNECT_REVERB',
+  'IMPORT_REVERB',
+  'APPLY_FACEBOOK_PRICES',
+  'APPLY_EBAY_PRICES',
+  'APPLY_DEPOP_PRICES',
+  'APPLY_POSHMARK_PRICES',
+  'APPLY_ETSY_PRICES',
+  'APPLY_REVERB_PRICES',
+  'CREATE_MARKETPLACE_LISTINGS',
+  'LISTING_FAILURES',
+];
 
 async function handleExtensionCommand(command, payload = {}) {
   switch (command) {
     case 'PING':
-      return { ok: true, version: '0.5.0' };
+      return { ok: true, version: EXTENSION_VERSION, commands: EXTENSION_COMMANDS };
     case 'SESSION_STATUS':
-      return sessionStatus();
+      return sessionStatus(payload);
     case 'CONNECT_FACEBOOK':
     case 'IMPORT_FACEBOOK':
       return connectFacebook();
@@ -1057,6 +1246,9 @@ async function handleExtensionCommand(command, payload = {}) {
     case 'CONNECT_ETSY':
     case 'IMPORT_ETSY':
       return connectEtsy();
+    case 'CONNECT_REVERB':
+    case 'IMPORT_REVERB':
+      return connectReverb();
     case 'APPLY_FACEBOOK_PRICES':
       return applyMarketplacePrices('facebook', payload.listings || []);
     case 'APPLY_EBAY_PRICES':
@@ -1067,8 +1259,12 @@ async function handleExtensionCommand(command, payload = {}) {
       return applyMarketplacePrices('poshmark', payload.listings || []);
     case 'APPLY_ETSY_PRICES':
       return applyMarketplacePrices('etsy', payload.listings || []);
+    case 'APPLY_REVERB_PRICES':
+      return applyMarketplacePrices('reverb', payload.listings || []);
     case 'CREATE_MARKETPLACE_LISTINGS':
       return createMarketplaceListings(payload);
+    case 'LISTING_FAILURES':
+      return listingFailureLog(payload.ack);
     default:
       return { error: `Unknown command: ${command}` };
   }
@@ -1084,6 +1280,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
   })();
   return true;
+});
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'dashboard') return;
+  port.onMessage.addListener(async (message) => {
+    try {
+      const result = await handleExtensionCommand(message.command, message.payload || {});
+      port.postMessage(result);
+    } catch (error) {
+      logError('extension port command', error, { command: message.command });
+      port.postMessage({ error: error.message, log: [{ at: new Date().toISOString(), message: error.message }] });
+    }
+  });
 });
 
 chrome.runtime.onConnectExternal.addListener((port) => {

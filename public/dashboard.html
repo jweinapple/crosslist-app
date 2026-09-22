@@ -11,6 +11,7 @@
             --depop-color: #FF2300;
             --poshmark-color: #822533;
             --etsy-color: #F56400;
+            --reverb-color: #FF5A00;
             --success-color: #00a878;
             --error-color: #d32323;
             --bg-primary: #ffffff;
@@ -236,6 +237,10 @@
             border-top: 3px solid var(--etsy-color);
         }
 
+        .marketplace-card.reverb {
+            border-top: 3px solid var(--reverb-color);
+        }
+
         @media (max-width: 768px) {
             .app-shell {
                 flex-direction: column;
@@ -333,6 +338,15 @@
 
         .btn-etsy:hover:not(:disabled) {
             background: #d45500;
+        }
+
+        .btn-reverb {
+            background: var(--reverb-color);
+            color: white;
+        }
+
+        .btn-reverb:hover:not(:disabled) {
+            background: #e04f00;
         }
 
         .marketplace-login-form {
@@ -620,6 +634,11 @@
 
         .platform-badge.etsy {
             background: var(--etsy-color);
+            color: white;
+        }
+
+        .platform-badge.reverb {
+            background: var(--reverb-color);
             color: white;
         }
 
@@ -1534,6 +1553,7 @@
         .mkt-logo.depop { background: var(--depop-color); }
         .mkt-logo.poshmark { background: var(--poshmark-color); }
         .mkt-logo.etsy { background: var(--etsy-color); }
+        .mkt-logo.reverb { background: var(--reverb-color); }
 
         .inventory-matrix tbody tr:hover {
             background: #fcfcfc;
@@ -1552,6 +1572,13 @@
 
         .inv-item-copy {
             min-width: 0;
+        }
+
+        .inv-photo-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
         }
 
         .inv-item-title {
@@ -1783,19 +1810,50 @@
             margin-top: 12px;
         }
 
-        .bulk-photo-thumb {
+        .bulk-photo-thumb,
+        .inv-photo-thumb {
             position: relative;
             aspect-ratio: 1;
             border-radius: 8px;
             overflow: hidden;
             background: #f3f4f6;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
         }
 
-        .bulk-photo-thumb img {
+        .inv-photo-thumb {
+            width: 48px;
+            height: 48px;
+            flex-shrink: 0;
+        }
+
+        .bulk-photo-thumb.solo,
+        .inv-photo-thumb.solo {
+            cursor: default;
+            touch-action: auto;
+        }
+
+        .bulk-photo-thumb.dragging,
+        .inv-photo-thumb.dragging {
+            opacity: 0.45;
+            cursor: grabbing;
+        }
+
+        .bulk-photo-thumb.drop-target,
+        .inv-photo-thumb.drop-target {
+            outline: 2px dashed var(--inv-accent);
+            outline-offset: 1px;
+        }
+
+        .bulk-photo-thumb img,
+        .inv-photo-thumb img {
             width: 100%;
             height: 100%;
             object-fit: cover;
             display: block;
+            pointer-events: none;
+            -webkit-user-drag: none;
         }
 
         .bulk-photo-thumb button {
@@ -1811,6 +1869,39 @@
             cursor: pointer;
             font-size: 14px;
             line-height: 1;
+            z-index: 1;
+        }
+
+        .photo-cover-badge {
+            position: absolute;
+            left: 4px;
+            bottom: 4px;
+            background: rgba(11, 20, 55, 0.82);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            padding: 2px 6px;
+            border-radius: 999px;
+            pointer-events: none;
+        }
+
+        .inv-photo-thumb .photo-cover-badge {
+            font-size: 8px;
+            padding: 1px 4px;
+            left: 2px;
+            bottom: 2px;
+        }
+
+        .bulk-photo-thumb.is-cover,
+        .inv-photo-thumb.is-cover {
+            box-shadow: 0 0 0 2px var(--inv-accent);
+        }
+
+        .photo-reorder-hint {
+            margin: 8px 0 0;
+            font-size: 13px;
+            color: var(--text-secondary);
         }
 
         .bulk-store-grid {
@@ -1894,7 +1985,7 @@
     <div id="auth-gate" class="auth-gate">
         <div class="auth-card">
             <h1>Crosslist</h1>
-            <p id="auth-copy">Sell your items on eBay, Facebook, Etsy and more, all from one place.</p>
+            <p id="auth-copy">Sell your items on eBay, Etsy and more, all from one place.</p>
             <a id="google-auth-btn" class="btn btn-google" href="/api/auth/google">
                 <svg viewBox="0 0 18 18" aria-hidden="true">
                     <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
@@ -1982,10 +2073,10 @@
                 <p>Link your accounts once, and we’ll post and update your items on every store for you.</p>
             </div>
             <div id="extension-banner" class="server-banner">
-                Facebook Marketplace uses the <strong>Crosslist Connector</strong> Chrome extension.
-                For other stores, the extension is an optional backup.
-                In Chrome: <code>chrome://extensions</code> → Developer mode → Load unpacked → select the
-                <code>extension</code> folder in this project, then refresh this page.
+                Connecting a store uses the <strong>Chrome helper</strong>.
+                If it is already loaded, open <code>chrome://extensions</code>, click <strong>Reload</strong> on
+                Crosslist Connector, then refresh this page.
+                First time: Developer mode → Load unpacked → select the <code>extension</code> folder.
             </div>
             <div class="marketplace-grid">
                 <article class="marketplace-card ebay">
@@ -2011,27 +2102,6 @@
                     <button id="ebay-extension-btn" type="button" class="btn-link">
                         Trouble connecting? Try the Chrome helper
                     </button>
-                </article>
-                <article class="marketplace-card facebook">
-                    <div class="marketplace-card-head">
-                        <h2><span class="mkt-logo facebook" aria-hidden="true">f</span>Facebook Marketplace</h2>
-                        <div id="facebook-auth" class="auth-badge disconnected">
-                            <span class="dot"></span>
-                            Not connected
-                        </div>
-                    </div>
-                    <p>Facebook needs a small Chrome add-on to connect. Click the button and follow the steps.</p>
-                    <div class="card-actions">
-                        <button id="facebook-auth-btn" type="button" class="btn btn-facebook">
-                            Connect Facebook
-                        </button>
-                        <button type="button" class="btn btn-secondary" onclick="startBulkImport('facebook')">
-                            Bring in my listings
-                        </button>
-                        <button id="facebook-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
-                            Disconnect
-                        </button>
-                    </div>
                 </article>
                 <article class="marketplace-card depop">
                     <div class="marketplace-card-head">
@@ -2122,6 +2192,30 @@
                         Trouble connecting? Try the Chrome helper
                     </button>
                 </article>
+                <article class="marketplace-card reverb">
+                    <div class="marketplace-card-head">
+                        <h2><span class="mkt-logo reverb" aria-hidden="true">R</span>Reverb</h2>
+                        <div id="reverb-auth" class="auth-badge disconnected">
+                            <span class="dot"></span>
+                            Not connected
+                        </div>
+                    </div>
+                    <p>Link your Reverb shop so we can post and update your gear for you.</p>
+                    <div class="card-actions">
+                        <button id="reverb-auth-btn" type="button" class="btn btn-reverb">
+                            Connect Reverb
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="startBulkImport('reverb')">
+                            Bring in my listings
+                        </button>
+                        <button id="reverb-disconnect-btn" type="button" class="btn btn-disconnect" hidden>
+                            Disconnect
+                        </button>
+                    </div>
+                    <button id="reverb-extension-btn" type="button" class="btn-link">
+                        Trouble connecting? Try the Chrome helper
+                    </button>
+                </article>
             </div>
         </section>
 
@@ -2199,10 +2293,10 @@
                         <select id="inventory-marketplace-filter" class="inventory-select" onchange="renderListings()">
                             <option value="all">All stores</option>
                             <option value="ebay">eBay</option>
-                            <option value="facebook">Facebook</option>
                             <option value="depop">Depop</option>
                             <option value="poshmark">Poshmark</option>
                             <option value="etsy">Etsy</option>
+                            <option value="reverb">Reverb</option>
                         </select>
                         <select id="inventory-category-filter" class="inventory-select" onchange="renderListings()">
                             <option value="all">All categories</option>
@@ -2211,6 +2305,7 @@
                             <option value="home">Home &amp; decor</option>
                             <option value="tech">Phones &amp; tech</option>
                             <option value="tickets">Event tickets</option>
+                            <option value="music">Music &amp; gear</option>
                             <option value="other">Something else</option>
                         </select>
                         <select id="inventory-issues-filter" class="inventory-select" onchange="renderListings()">
@@ -2269,9 +2364,10 @@
                         <label>Photos</label>
                         <label class="bulk-dropzone" id="bulk-dropzone">
                             Drop photos here or click to upload
-                            <input id="bulk-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+                            <input id="bulk-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif,.hiec" multiple>
                         </label>
                         <div id="bulk-photo-grid" class="bulk-photo-grid"></div>
+                        <p id="bulk-photo-hint" class="photo-reorder-hint" hidden>Drag photos to change the order. The first one is the cover.</p>
                     </div>
                 </div>
                 <div class="bulk-details-card">
@@ -2313,8 +2409,8 @@
                         <div id="bulk-store-grid" class="bulk-store-grid"></div>
                     </div>
                     <div class="bulk-list-actions">
-                        <button type="button" class="btn btn-secondary" onclick="saveBulkListing(false)">Save to inventory</button>
-                        <button type="button" class="btn btn-add-item" onclick="saveBulkListing(true)">List on all stores</button>
+                        <button type="button" class="btn btn-secondary" id="bulk-save-btn" onclick="saveBulkListing(false)">Save to inventory</button>
+                        <button type="button" class="btn btn-add-item" id="bulk-list-stores-btn" onclick="saveBulkListing(true)">List on all stores</button>
                     </div>
                 </div>
             </div>
@@ -2330,7 +2426,7 @@
                     </svg>
                     Bulk import from marketplace
                 </h1>
-                <p>Pull live listings from eBay, Facebook, Depop, Poshmark, or Etsy into one inventory. The same product on multiple marketplaces is merged into one row, even when the titles are worded differently. Close matches are reviewed if they are not certain.</p>
+                <p>Pull live listings from eBay, Depop, Poshmark, Etsy, or Reverb into one inventory. The same product on multiple marketplaces is merged into one row, even when the titles are worded differently. Close matches are reviewed if they are not certain.</p>
             </div>
             <div class="marketplace-grid">
                 <article class="marketplace-card ebay">
@@ -2340,15 +2436,6 @@
                     <p>Import active listings from your eBay seller inventory. Already imported items are skipped; the same product on another marketplace is merged into that row. Close matches are reviewed after import.</p>
                     <button type="button" class="btn btn-primary" onclick="startBulkImport('ebay')">
                         Import from eBay
-                    </button>
-                </article>
-                <article class="marketplace-card facebook">
-                    <div class="marketplace-card-head">
-                        <h2><span class="mkt-logo facebook" aria-hidden="true">f</span>Facebook Marketplace</h2>
-                    </div>
-                    <p>Import from Marketplace after connecting with the Chrome extension.</p>
-                    <button type="button" class="btn btn-facebook" onclick="startBulkImport('facebook')">
-                        Import from Facebook
                     </button>
                 </article>
                 <article class="marketplace-card depop">
@@ -2376,6 +2463,15 @@
                     <p>Import shop listings after connecting with Etsy OAuth.</p>
                     <button type="button" class="btn btn-etsy" onclick="startBulkImport('etsy')">
                         Import from Etsy
+                    </button>
+                </article>
+                <article class="marketplace-card reverb">
+                    <div class="marketplace-card-head">
+                        <h2><span class="mkt-logo reverb" aria-hidden="true">R</span>Reverb</h2>
+                    </div>
+                    <p>Import shop listings after connecting with Reverb OAuth or the Chrome helper.</p>
+                    <button type="button" class="btn btn-reverb" onclick="startBulkImport('reverb')">
+                        Import from Reverb
                     </button>
                 </article>
             </div>
@@ -2409,7 +2505,7 @@
                 </div>
                 <div class="form-group">
                     <label>Photos</label>
-                    <input type="file" id="new-photos" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+                    <input type="file" id="new-photos" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif,.hiec" multiple>
                 </div>
                 <div class="form-group">
                     <label>Image URL (optional)</label>
@@ -2477,6 +2573,7 @@
             depop: { connected: false, mode: 'none' },
             poshmark: { connected: false, mode: 'none' },
             etsy: { connected: false, mode: 'none' },
+            reverb: { connected: false, mode: 'none' },
             credentials: {},
         };
         let importState = {
@@ -2499,20 +2596,25 @@
         const DASHBOARD_SECTIONS = ['marketplaces', 'items', 'list', 'import'];
         const INVENTORY_PLATFORMS = [
             { id: 'ebay', label: 'eBay', mark: '' },
-            { id: 'facebook', label: 'Facebook', mark: 'f' },
             { id: 'depop', label: 'Depop', mark: 'D' },
             { id: 'poshmark', label: 'Poshmark', mark: 'P' },
             { id: 'etsy', label: 'Etsy', mark: 'E' },
+            { id: 'reverb', label: 'Reverb', mark: 'R' },
         ];
+        function isStoreEnabled(platform) {
+            return INVENTORY_PLATFORMS.some((item) => item.id === platform);
+        }
         let inventoryTab = 'listed';
         let lastSyncedAt = null;
         let bulkListingPhotos = [];
+        const photoSaveSeq = new Map();
         const IMPORT_COMMANDS = {
             ebay: 'IMPORT_EBAY',
             facebook: 'IMPORT_FACEBOOK',
             depop: 'IMPORT_DEPOP',
             poshmark: 'IMPORT_POSHMARK',
             etsy: 'IMPORT_ETSY',
+            reverb: 'IMPORT_REVERB',
         };
         const PRICE_PUSH_COMMANDS = {
             ebay: 'APPLY_EBAY_PRICES',
@@ -2520,6 +2622,7 @@
             depop: 'APPLY_DEPOP_PRICES',
             poshmark: 'APPLY_POSHMARK_PRICES',
             etsy: 'APPLY_ETSY_PRICES',
+            reverb: 'APPLY_REVERB_PRICES',
         };
 
         function showDashboardSection(sectionId) {
@@ -2558,14 +2661,37 @@
 
         async function apiFetch(path, options = {}) {
             const { authGateOn401 = true, ...fetchOptions } = options;
-            const response = await fetch(`${getApiBase()}${path}`, {
-                credentials: 'include',
-                ...fetchOptions,
-                headers: {
-                    ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
-                    ...fetchOptions.headers,
-                },
-            });
+            const method = String(fetchOptions.method || 'GET').toUpperCase();
+            let response;
+            try {
+                response = await fetch(`${getApiBase()}${path}`, {
+                    credentials: 'include',
+                    ...fetchOptions,
+                    headers: {
+                        ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
+                        ...fetchOptions.headers,
+                    },
+                });
+            } catch (error) {
+                const failed = /failed to fetch|networkerror|load failed/i.test(error.message || '');
+                const message = failed
+                    ? `Could not reach Crosslist (${method} ${path})`
+                    : (error.message || 'Could not reach Crosslist');
+                log('error', message, {
+                    source: 'crosslist',
+                    detail: {
+                        source: 'crosslist',
+                        step: 'apiFetch',
+                        method,
+                        path,
+                        name: error.name,
+                        message: error.message,
+                    },
+                });
+                const wrapped = new Error(message);
+                wrapped.cause = error;
+                throw wrapped;
+            }
             let data = null;
             const text = await response.text();
             if (text) {
@@ -2606,7 +2732,7 @@
             const isSignup = mode === 'signup';
             document.getElementById('auth-name-field').hidden = !isSignup;
             document.getElementById('auth-copy').textContent = isSignup
-                ? 'Sell your items on eBay, Facebook, Etsy and more, all from one place.'
+                ? 'Sell your items on eBay, Etsy and more, all from one place.'
                 : 'Welcome back! Sign in to see your items and stores.';
             document.getElementById('auth-submit').textContent = isSignup ? 'Create my account' : 'Sign in';
             document.getElementById('auth-toggle').textContent = isSignup
@@ -2669,11 +2795,8 @@
                 if (!response.ok) throw new Error(data.error || 'Authentication failed');
                 currentUser = data.user;
                 hideAuthGate();
-                renderCurrentUser();
                 log('success', authMode === 'signup' ? `Account created (${email})` : `Signed in as ${email}`);
-                handleOAuthReturnParams();
-                await checkAuthStatus();
-                await loadListings();
+                await enterDashboard();
             } catch (error) {
                 errorEl.textContent = error.message;
                 log('error', `Authentication failed: ${error.message}`);
@@ -2699,21 +2822,91 @@
             return Boolean(document.documentElement.dataset.crosslistExtensionId);
         }
 
+        const RELOAD_HELPER_MESSAGE =
+            'Reload the Chrome helper, then try Connect again. Open chrome://extensions, click Reload on Crosslist Connector, and refresh this page.';
+
+        function friendlyExtensionError(error) {
+            const message = String(error || '');
+            if (/unknown command/i.test(message)) {
+                showExtensionInstallHelp();
+                return RELOAD_HELPER_MESSAGE;
+            }
+            if (/failed to fetch/i.test(message)) {
+                return 'Could not reach eBay from the Chrome helper. Reload the helper and try again.';
+            }
+            return message;
+        }
+
+        function friendlyListingError(error) {
+            const message = String(error || '');
+            if (/failed to fetch/i.test(message)) {
+                return 'Could not reach eBay. Reload the Chrome helper and try again.';
+            }
+            return message;
+        }
+
+        function versionAtLeast(version, min) {
+            const parse = (value) => String(value || '0').split('.').map((part) => Number(part) || 0);
+            const a = parse(version);
+            const b = parse(min);
+            for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+                const delta = (a[i] || 0) - (b[i] || 0);
+                if (delta !== 0) return delta > 0;
+            }
+            return true;
+        }
+
+        function extensionHasCommand(ping, command) {
+            if (/REVERB/i.test(command) && !versionAtLeast(ping?.version, '0.6.3')) return false;
+            if (command === 'CREATE_MARKETPLACE_LISTINGS' && !versionAtLeast(ping?.version, '0.6.6')) return false;
+            if (command === 'LISTING_FAILURES' && !versionAtLeast(ping?.version, '0.6.7')) return false;
+            if (Array.isArray(ping?.commands)) return ping.commands.includes(command);
+            return Boolean(ping?.ok);
+        }
+
+        async function ensureExtensionCommand(command) {
+            if (!hasExtensionBridge()) {
+                showExtensionInstallHelp();
+                throw new Error('Install the Crosslist Connector in Google Chrome, then try Connect again');
+            }
+            let ping;
+            try {
+                ping = await callExtension('PING');
+            } catch (error) {
+                throw new Error(friendlyExtensionError(error.message));
+            }
+            if (!extensionHasCommand(ping, command)) {
+                showExtensionInstallHelp();
+                throw new Error(RELOAD_HELPER_MESSAGE);
+            }
+            return ping;
+        }
+
         function callExtension(command, payload = {}) {
             log('info', `Extension command ${command}`, { source: 'extension' });
             return new Promise((resolve, reject) => {
                 if (!hasExtensionBridge()) {
-                    reject(new Error('Crosslist Chrome extension not detected'));
+                    reject(new Error('Install the Crosslist Connector in Google Chrome, then try Connect again'));
                     return;
                 }
                 const requestId = crypto.randomUUID();
+                const timeoutMs = command === 'CREATE_MARKETPLACE_LISTINGS'
+                    ? 180000
+                    : command === 'SESSION_STATUS'
+                        ? 12000
+                        : 90000;
+                const timer = setTimeout(() => {
+                    window.removeEventListener('message', handler);
+                    reject(new Error('The Chrome helper took too long. Open this page in Google Chrome with the extension enabled.'));
+                }, timeoutMs);
                 function handler(event) {
                     if (event.origin !== window.location.origin) return;
                     if (event.data?.type !== 'CROSSLIST_EXT_RESPONSE') return;
                     if (event.data.requestId !== requestId) return;
+                    clearTimeout(timer);
                     window.removeEventListener('message', handler);
                     const response = event.data.response;
-                    if (response?.error) reject(new Error(response.error));
+                    if (response?.error) reject(new Error(friendlyExtensionError(response.error)));
                     else resolve(response);
                 }
                 window.addEventListener('message', handler);
@@ -2774,7 +2967,7 @@
 
         function googleAuthErrorMessage(code) {
             if (code === 'google-config') {
-                return 'Google sign-in isn’t configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.';
+                return 'Google sign-in isn’t available yet. Use email and password, or try again later.';
             }
             if (code === 'google') {
                 return 'Google sign-in failed. Try again or use email and password.';
@@ -2805,36 +2998,24 @@
                 log('success', 'Account created with Google');
                 showToast('Account created with Google', 'success');
             }
-            if (!connected && !oauthError && connect !== 'facebook-extension') return;
-            if (connected) {
+            const extensionPlatform = String(connect || '').replace(/-extension$/, '');
+            const wantsExtension = Boolean(
+                connect?.endsWith('-extension') &&
+                isStoreEnabled(extensionPlatform)
+            );
+            const oauthFallback = isStoreEnabled(oauthError);
+            if (!connected && !wantsExtension && !oauthFallback) return;
+            if (connected && isStoreEnabled(connected)) {
                 const label = platformLabel(connected);
-                log('success', `${label} connected with OAuth`);
-                showToast(`${label} connected with OAuth`, 'success');
-            }
-            if (oauthError) {
-                const label = platformLabel(oauthError);
-                const message = oauthCredentialMessage(oauthError, label);
-                log('error', message);
-                showToast(message, 'error');
+                log('success', `${label} connected`);
+                showToast(`${label} connected`, 'success');
             }
             history.replaceState(null, '', window.location.pathname + window.location.hash);
-            if (connect === 'facebook-extension' || oauthError === 'facebook') {
-                connectWithExtension('facebook');
+            if (oauthFallback) {
+                connectWithExtension(oauthError);
+                return;
             }
-        }
-
-        function oauthCredentialMessage(platform, label) {
-            if (platform === 'facebook') {
-                return 'Facebook Marketplace connects with the Chrome extension.';
-            }
-            const keys = {
-                ebay: 'EBAY_CLIENT_ID and EBAY_CLIENT_SECRET',
-                depop: 'DEPOP_CLIENT_ID and DEPOP_CLIENT_SECRET',
-                etsy: 'ETSY_API_KEY',
-                poshmark: 'Poshmark email and password',
-            };
-            const needed = keys[platform] || `${label} OAuth credentials`;
-            return `OAuth isn’t configured for ${label} yet. Add ${needed} to .env. After that, Connect opens ${label}’s sign-in page, where Google SSO works.`;
+            if (wantsExtension) connectWithExtension(extensionPlatform);
         }
 
         function showServerBannerIfNeeded() {
@@ -2857,6 +3038,7 @@
                 setAuthMode(authMode === 'signup' ? 'login' : 'signup');
             });
             document.getElementById('logout-btn').addEventListener('click', handleLogout);
+            bindDashboardActions();
             const signedIn = await loadCurrentUser();
             if (!signedIn) {
                 const params = new URLSearchParams(window.location.search);
@@ -2868,31 +3050,30 @@
                 );
                 return;
             }
-            renderCurrentUser();
-            handleOAuthReturnParams();
+            await enterDashboard();
+        });
+
+        function bindDashboardActions() {
             document.getElementById('ebay-auth-btn').addEventListener('click', () => connectWithOAuth('ebay'));
-            document.getElementById('facebook-auth-btn').addEventListener('click', () => connectWithExtension('facebook'));
             document.getElementById('depop-auth-btn').addEventListener('click', () => connectWithOAuth('depop'));
             document.getElementById('etsy-auth-btn').addEventListener('click', () => connectWithOAuth('etsy'));
+            document.getElementById('reverb-auth-btn').addEventListener('click', () => connectWithOAuth('reverb'));
             document.getElementById('ebay-extension-btn').addEventListener('click', () => connectWithExtension('ebay'));
             document.getElementById('depop-extension-btn').addEventListener('click', () => connectWithExtension('depop'));
             document.getElementById('poshmark-google-btn').addEventListener('click', () => connectWithExtension('poshmark'));
             document.getElementById('etsy-extension-btn').addEventListener('click', () => connectWithExtension('etsy'));
+            document.getElementById('reverb-extension-btn').addEventListener('click', () => connectWithExtension('reverb'));
             document.getElementById('ebay-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('ebay'));
-            document.getElementById('facebook-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('facebook'));
             document.getElementById('depop-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('depop'));
             document.getElementById('poshmark-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('poshmark'));
             document.getElementById('etsy-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('etsy'));
+            document.getElementById('reverb-disconnect-btn').addEventListener('click', () => handleMarketplaceDisconnect('reverb'));
             document.getElementById('poshmark-login-form').addEventListener('submit', (event) => {
                 event.preventDefault();
                 connectPoshmarkWithPassword();
             });
             document.getElementById('poshmark-email').addEventListener('input', updatePoshmarkSignInState);
             document.getElementById('poshmark-password').addEventListener('input', updatePoshmarkSignInState);
-            await checkAuthStatus();
-            initBulkListingForm();
-            await loadListings();
-            log('info', `Signed in as ${currentUser.email}`);
             document.getElementById('import-modal').addEventListener('click', (event) => {
                 if (event.target.id === 'import-modal') closeImportModal();
             });
@@ -2916,16 +3097,39 @@
             document.getElementById('match-modal').addEventListener('click', (event) => {
                 if (event.target.id === 'match-modal') finishImageMatchesLater();
             });
-        });
+        }
+
+        async function enterDashboard() {
+            renderCurrentUser();
+            handleOAuthReturnParams();
+            await checkAuthStatus();
+            await flushListingFailures();
+            initBulkListingForm();
+            initPhotoReorder(document.getElementById('bulk-photo-grid'), {
+                thumbSelector: '.bulk-photo-thumb',
+                onMove: moveBulkPhoto,
+            });
+            initPhotoReorder(document.getElementById('listings-body'), {
+                thumbSelector: '.inv-photo-thumb',
+                onMove: (from, to, thumb) => {
+                    const listingId = thumb.closest('.inv-photo-strip')?.dataset.listingId;
+                    if (listingId) reorderInventoryPhotos(listingId, from, to);
+                },
+            });
+            await loadListings();
+            log('info', `Signed in as ${currentUser.email}`);
+        }
 
         function listingPlatforms(listing) {
+            let platforms = [];
             if (listing?.platforms && typeof listing.platforms === 'object' && !Array.isArray(listing.platforms)) {
-                return Object.keys(listing.platforms).filter((key) => listing.platforms[key]);
+                platforms = Object.keys(listing.platforms).filter((key) => listing.platforms[key]);
+            } else if (Array.isArray(listing?.platformListings)) {
+                platforms = listing.platformListings.map((entry) => entry.platform || entry).filter(Boolean);
+            } else if (listing?.platform) {
+                platforms = [listing.platform];
             }
-            if (Array.isArray(listing?.platformListings)) {
-                return listing.platformListings.map((entry) => entry.platform || entry).filter(Boolean);
-            }
-            return listing?.platform ? [listing.platform] : [];
+            return platforms.filter(isStoreEnabled);
         }
 
         function platformLabel(platform) {
@@ -2934,6 +3138,7 @@
             if (platform === 'depop') return 'Depop';
             if (platform === 'poshmark') return 'Poshmark';
             if (platform === 'etsy') return 'Etsy';
+            if (platform === 'reverb') return 'Reverb';
             return platform;
         }
 
@@ -2942,6 +3147,7 @@
             if (platform === 'depop') return 'btn btn-depop';
             if (platform === 'poshmark') return 'btn btn-poshmark';
             if (platform === 'etsy') return 'btn btn-etsy';
+            if (platform === 'reverb') return 'btn btn-reverb';
             return 'btn btn-primary';
         }
 
@@ -3159,7 +3365,19 @@
         }
 
         function selectedBulkStores() {
-            return [...document.querySelectorAll('#bulk-store-grid input[type="checkbox"]:checked')].map((input) => input.value);
+            return [...document.querySelectorAll('#bulk-store-grid input[type="checkbox"]:checked')]
+                .map((input) => input.value)
+                .filter((id) => connectedStoreIds().includes(id));
+        }
+
+        function setBulkListingBusy(busy, push = false) {
+            const saveBtn = document.getElementById('bulk-save-btn');
+            const listBtn = document.getElementById('bulk-list-stores-btn');
+            if (saveBtn) saveBtn.disabled = busy;
+            if (!listBtn) return;
+            listBtn.dataset.label = listBtn.dataset.label || listBtn.textContent;
+            listBtn.disabled = busy;
+            listBtn.textContent = busy && push ? 'Listing…' : listBtn.dataset.label;
         }
 
         function renderBulkStorePicker() {
@@ -3181,24 +3399,185 @@
             }).join('');
         }
 
+        function listingPhotoList(listing) {
+            const seen = new Set();
+            const photos = [];
+            const push = (image) => {
+                if (!isUsableThumb(image)) return;
+                const key = String(image);
+                if (seen.has(key)) return;
+                seen.add(key);
+                photos.push(image);
+            };
+            (listing?.images || []).forEach(push);
+            INVENTORY_PLATFORMS.forEach((platform) => {
+                (listingPlatformEntry(listing, platform.id)?.images || []).forEach(push);
+            });
+            return photos;
+        }
+
+        function moveListItem(list, from, to) {
+            if (!Array.isArray(list) || from === to) return list;
+            if (!Number.isInteger(from) || !Number.isInteger(to)) return list;
+            if (from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
+            const next = list.slice();
+            const [item] = next.splice(from, 1);
+            next.splice(to, 0, item);
+            return next;
+        }
+
+        function initPhotoReorder(container, { thumbSelector, onMove }) {
+            if (!container || container.dataset.photoReorder === 'true') return;
+            container.dataset.photoReorder = 'true';
+            let drag = null;
+
+            function thumbAtPoint(event, draggingEl) {
+                const stack = document.elementsFromPoint(event.clientX, event.clientY) || [];
+                for (const node of stack) {
+                    const thumb = node.closest?.(thumbSelector);
+                    if (thumb && container.contains(thumb) && thumb !== draggingEl) return thumb;
+                }
+                return null;
+            }
+
+            function clearTargets() {
+                container.querySelectorAll(`${thumbSelector}.drop-target`).forEach((el) => {
+                    el.classList.remove('drop-target');
+                });
+            }
+
+            container.addEventListener('pointerdown', (event) => {
+                if (event.button) return;
+                if (event.target.closest('button, a, input, summary, label')) return;
+                const thumb = event.target.closest(thumbSelector);
+                if (!thumb || !container.contains(thumb) || thumb.classList.contains('solo')) return;
+                drag = {
+                    pointerId: event.pointerId,
+                    from: Number(thumb.dataset.index),
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    moved: false,
+                    thumb,
+                };
+            });
+
+            container.addEventListener('pointermove', (event) => {
+                if (!drag || drag.pointerId !== event.pointerId) return;
+                const dx = event.clientX - drag.startX;
+                const dy = event.clientY - drag.startY;
+                if (!drag.moved) {
+                    if (dx * dx + dy * dy < 144) return;
+                    if (Math.abs(dy) > Math.abs(dx) * 2 && Math.abs(dx) < 10) {
+                        drag = null;
+                        return;
+                    }
+                    drag.moved = true;
+                    drag.thumb.classList.add('dragging');
+                    try { drag.thumb.setPointerCapture(event.pointerId); } catch { /* ignore */ }
+                }
+                event.preventDefault();
+                clearTargets();
+                const over = thumbAtPoint(event, drag.thumb);
+                if (over && Number(over.dataset.index) !== drag.from) over.classList.add('drop-target');
+            }, { passive: false });
+
+            function finish(event) {
+                if (!drag || drag.pointerId !== event.pointerId) return;
+                const from = drag.from;
+                const moved = drag.moved;
+                const over = thumbAtPoint(event, drag.thumb);
+                drag.thumb.classList.remove('dragging');
+                clearTargets();
+                drag = null;
+                const to = over ? Number(over.dataset.index) : -1;
+                if (moved && Number.isInteger(to) && to >= 0 && to !== from) onMove(from, to, over);
+            }
+
+            container.addEventListener('pointerup', finish);
+            container.addEventListener('pointercancel', finish);
+        }
+
         function renderBulkPhotos() {
             const grid = document.getElementById('bulk-photo-grid');
+            const hint = document.getElementById('bulk-photo-hint');
             if (!grid) return;
+            const canReorder = bulkListingPhotos.length > 1;
             grid.innerHTML = bulkListingPhotos.map((photo, index) => `
-                <div class="bulk-photo-thumb">
+                <div class="bulk-photo-thumb ${index === 0 ? 'is-cover' : ''} ${canReorder ? '' : 'solo'}" data-index="${index}" role="button" aria-label="${index === 0 ? 'Cover photo' : `Photo ${index + 1}`}" title="${canReorder ? 'Drag to change order' : ''}">
                     <img src="${escapeHtml(photo.preview)}" alt="">
+                    ${index === 0 ? '<span class="photo-cover-badge">Cover</span>' : ''}
                     <button type="button" onclick="removeBulkPhoto(${index})" aria-label="Remove photo">×</button>
                 </div>
             `).join('');
+            if (hint) hint.hidden = !canReorder;
         }
 
-        function addBulkPhotos(fileList) {
-            const incoming = [...(fileList || [])].filter((file) => file.type.startsWith('image/'));
+        function isPhotoFile(file) {
+            if (!file) return false;
+            if (String(file.type || '').startsWith('image/')) return true;
+            return /\.(jpe?g|png|webp|gif|heic|heif|hiec)$/i.test(file.name || '');
+        }
+
+        function isHeicFile(file) {
+            if (/heic|heif/i.test(file?.type || '')) return true;
+            return /\.(heic|heif|hiec)$/i.test(file?.name || '');
+        }
+
+        function heicJpegName(file) {
+            const name = String(file?.name || 'photo').replace(/\.(heic|heif|hiec)$/i, '.jpg');
+            return name.toLowerCase().endsWith('.jpg') ? name : `${name}.jpg`;
+        }
+
+        async function convertHeicInBrowser(file) {
+            if (typeof createImageBitmap !== 'function') return null;
+            try {
+                const bitmap = await createImageBitmap(file);
+                const canvas = document.createElement('canvas');
+                canvas.width = bitmap.width;
+                canvas.height = bitmap.height;
+                canvas.getContext('2d').drawImage(bitmap, 0, 0);
+                bitmap.close();
+                const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+                if (!blob) return null;
+                return new File([blob], heicJpegName(file), { type: 'image/jpeg' });
+            } catch {
+                return null;
+            }
+        }
+
+        async function convertHeicOnServer(file) {
+            try {
+                const response = await fetch(`${getApiBase()}/api/uploads`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': file.type || 'application/octet-stream',
+                        'X-Filename': encodeURIComponent(file.name || 'photo.heic'),
+                    },
+                    body: file,
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.url) return null;
+                const jpeg = await fetch(`${getApiBase()}${data.url}`, { credentials: 'include' }).then((r) => r.blob());
+                return new File([jpeg], heicJpegName(file), { type: 'image/jpeg' });
+            } catch {
+                return null;
+            }
+        }
+
+        async function asListingPhoto(file) {
+            if (!isHeicFile(file)) return file;
+            return (await convertHeicInBrowser(file)) || (await convertHeicOnServer(file)) || file;
+        }
+
+        async function addBulkPhotos(fileList) {
+            const incoming = [...(fileList || [])].filter(isPhotoFile);
             for (const file of incoming) {
                 if (bulkListingPhotos.length >= 8) break;
+                const photo = await asListingPhoto(file);
                 bulkListingPhotos.push({
-                    file,
-                    preview: URL.createObjectURL(file),
+                    file: photo,
+                    preview: URL.createObjectURL(photo),
                 });
             }
             renderBulkPhotos();
@@ -3208,6 +3587,41 @@
             const [removed] = bulkListingPhotos.splice(index, 1);
             if (removed?.preview) URL.revokeObjectURL(removed.preview);
             renderBulkPhotos();
+        }
+
+        function moveBulkPhoto(from, to) {
+            bulkListingPhotos = moveListItem(bulkListingPhotos, from, to);
+            renderBulkPhotos();
+        }
+
+        async function reorderInventoryPhotos(listingId, from, to) {
+            const listing = listings.find((item) => item.id === listingId);
+            if (!listing) return;
+            const current = listingPhotoList(listing);
+            const photos = moveListItem(current, from, to);
+            if (photos === current) return;
+            listing.images = photos;
+            Object.values(listing.platforms || {}).forEach((entry) => {
+                if (entry && Array.isArray(entry.images) && entry.images.length) {
+                    entry.images = photos;
+                }
+            });
+            renderListings();
+            const seq = (photoSaveSeq.get(listingId) || 0) + 1;
+            photoSaveSeq.set(listingId, seq);
+            try {
+                const updated = await apiFetch(`/api/listings/${encodeURIComponent(listingId)}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ images: photos }),
+                });
+                if (photoSaveSeq.get(listingId) !== seq) return;
+                listings = listings.map((item) => (item.id === listingId ? updated : item));
+            } catch (error) {
+                if (error.status === 401) return;
+                if (photoSaveSeq.get(listingId) !== seq) return;
+                showToast('Could not save photo order', 'error');
+                await loadListings({ skipImageMatches: true });
+            }
         }
 
         function resetBulkListingForm() {
@@ -3234,6 +3648,7 @@
                 input.value = '';
             });
             dropzone.addEventListener('dragover', (event) => {
+                if (![...event.dataTransfer.types].includes('Files')) return;
                 event.preventDefault();
                 dropzone.classList.add('dragover');
             });
@@ -3241,14 +3656,16 @@
             dropzone.addEventListener('drop', (event) => {
                 event.preventDefault();
                 dropzone.classList.remove('dragover');
-                addBulkPhotos(event.dataTransfer?.files);
+                if (!event.dataTransfer?.files?.length) return;
+                addBulkPhotos(event.dataTransfer.files);
             });
             renderBulkStorePicker();
         }
 
         async function uploadListingPhotos(files) {
             const urls = [];
-            for (const file of files) {
+            for (const original of files) {
+                const file = await asListingPhoto(original);
                 const response = await fetch(`${getApiBase()}/api/uploads`, {
                     method: 'POST',
                     credentials: 'include',
@@ -3277,29 +3694,74 @@
             if (!extensionTasks?.length) return [];
             if (!hasExtensionBridge()) {
                 showExtensionInstallHelp();
-                throw new Error('Install the Crosslist Chrome extension to list on live stores');
+                throw new Error('Install the Chrome helper to list on live stores');
             }
+            await ensureExtensionCommand('CREATE_MARKETPLACE_LISTINGS');
             const platforms = extensionTasks.map((task) => task.platform);
-            log('info', `Opening listing forms for ${platforms.map(platformLabel).join(', ')}`);
-            showToast('Opening marketplace listing forms…', 'success');
+            log('info', `Listing on ${platforms.map(platformLabel).join(', ')}`);
+            showToast('Listing on your stores…', 'success');
             const result = await callExtension('CREATE_MARKETPLACE_LISTINGS', {
                 listing: {
                     ...listing,
                     ...(extensionTasks[0]?.item || {}),
                     images: listing.images || [],
+                    category: listing.category,
+                    details: listing.details,
+                    condition: listing.condition,
+                    sku: listing.sku,
                 },
                 platforms,
                 dashboardOrigin: getApiBase(),
             });
             ingestExtensionLog(platforms[0], result);
             const rows = Array.isArray(result?.results) ? result.results : [];
+            for (const row of rows) {
+                if (row?.status === 'error' && row.detail) {
+                    log('error', `${platformLabel(row.platform)} listing failed${row.detail.step ? ` while ${row.detail.step}` : ''}`, {
+                        source: row.detail.source || 'extension',
+                        detail: row.detail,
+                    });
+                }
+            }
             if (rows.length) {
                 await apiFetch(`/api/listings/${encodeURIComponent(listing.id)}/listed`, {
                     method: 'POST',
                     body: JSON.stringify({ results: rows, source: 'extension' }),
                 });
+                await ackListingFailures(rows);
             }
             return rows;
+        }
+
+        async function ackListingFailures(rows) {
+            const ids = (Array.isArray(rows) ? rows : []).map((row) => row?.failure?.id).filter(Boolean);
+            if (!ids.length || !hasExtensionBridge()) return;
+            try {
+                const ping = await callExtension('PING');
+                if (!extensionHasCommand(ping, 'LISTING_FAILURES')) return;
+                await callExtension('LISTING_FAILURES', { ack: ids });
+            } catch (error) {
+                log('error', `Could not clear saved listing failures: ${error.message}`);
+            }
+        }
+
+        async function flushListingFailures() {
+            if (!hasExtensionBridge()) return;
+            try {
+                const ping = await callExtension('PING');
+                if (!extensionHasCommand(ping, 'LISTING_FAILURES')) return;
+                const pending = await callExtension('LISTING_FAILURES');
+                const failures = Array.isArray(pending?.failures) ? pending.failures : [];
+                if (!failures.length) return;
+                const saved = await apiFetch('/api/listing-failures', {
+                    method: 'POST',
+                    body: JSON.stringify({ failures }),
+                });
+                const ids = [...(saved?.saved || []), ...(saved?.dropped || [])];
+                if (ids.length) await callExtension('LISTING_FAILURES', { ack: ids });
+            } catch (error) {
+                log('error', `Could not save listing failure details: ${error.message}`);
+            }
         }
 
         async function pushListingToStores(listingId, platforms) {
@@ -3307,21 +3769,47 @@
                 showToast('Start the server with npm start', 'error');
                 return null;
             }
-            if (!listingId) return null;
-            log('info', `Pushing item to ${platforms?.length ? platforms.map(platformLabel).join(', ') : 'all connected stores'}`);
+            if (!listingId) {
+                showToast('Could not save the item', 'error');
+                return null;
+            }
+            const targets = (Array.isArray(platforms) && platforms.length ? platforms : connectedStoreIds())
+                .filter(isStoreEnabled);
+            if (!targets.length) {
+                showToast('Connect at least one marketplace first', 'error');
+                showDashboardSection('marketplaces');
+                return null;
+            }
+            log('info', `Pushing item to ${targets.map(platformLabel).join(', ')}`);
             try {
                 const data = await apiFetch(`/api/listings/${encodeURIComponent(listingId)}/push`, {
                     method: 'POST',
-                    body: JSON.stringify({ platforms }),
+                    body: JSON.stringify({ platforms: targets }),
                 });
                 const extensionRows = await runExtensionListingTasks(data.listing, data.extensionTasks || []);
-                const listed = (data.results || []).filter((row) => row.status === 'active').length
-                    + extensionRows.filter((row) => row.status === 'active').length;
-                const review = (data.extensionTasks || []).length;
+                const allResults = [...(data.results || []), ...extensionRows];
+                // The server reports a pending row per store and the extension reports the
+                // outcome for the same store, so collapse them and let the later row win.
+                const byPlatform = new Map();
+                for (const row of allResults) {
+                    byPlatform.set(row.platform, { ...(byPlatform.get(row.platform) || {}), ...row });
+                }
+                const rows = [...byPlatform.values()];
+                const listed = rows.filter((row) => row.status === 'active').length;
+                const review = rows.filter((row) => row.status !== 'active' && row.needsReview).length;
+                const failed = rows.filter((row) => row.status === 'error' && row.error);
+                const parts = [];
+                if (listed) parts.push(`Listed on ${listed} store${listed === 1 ? '' : 's'}`);
                 if (review) {
-                    showToast(`Saved to inventory. Review and publish ${review} store form${review === 1 ? '' : 's'}.`, 'success');
+                    parts.push(
+                        `${review} store${review === 1 ? '' : 's'} need you to review and publish in the tab${review === 1 ? '' : 's'} Crosslist opened`
+                    );
+                }
+                if (failed.length) parts.push(friendlyListingError(failed[0].error) || 'Could not list this item');
+                if (parts.length) {
+                    showToast(parts.join('. '), failed.length && !listed && !review ? 'error' : 'success');
                 } else {
-                    showToast(listed ? `Listed on ${listed} store${listed === 1 ? '' : 's'}` : 'Saved to inventory', 'success');
+                    showToast('Saved to inventory', 'success');
                 }
                 await loadListings({ skipImageMatches: true });
                 showDashboardSection('items');
@@ -3329,8 +3817,11 @@
                 return data;
             } catch (error) {
                 if (error.status === 401) return null;
-                log('error', `Could not list item: ${error.message}`);
-                showToast(error.message, 'error');
+                const message = friendlyListingError(error.message);
+                log('error', `Could not list item: ${message}`, {
+                    detail: { name: error.name, message: error.message, cause: error.cause?.message },
+                });
+                showToast(message, 'error');
                 return null;
             }
         }
@@ -3346,13 +3837,20 @@
                 showToast('Title is required', 'error');
                 return;
             }
+            if (push && !platforms.length) {
+                showToast(connectedStoreIds().length ? 'Choose at least one connected store' : 'Connect at least one marketplace first', 'error');
+                if (!connectedStoreIds().length) showDashboardSection('marketplaces');
+                return;
+            }
             if (showServerBannerIfNeeded()) {
                 showToast('Start the server with npm start', 'error');
                 return;
             }
+            setBulkListingBusy(true, push);
             log('info', push ? 'Saving item and listing on connected stores...' : 'Saving item to inventory...');
+            if (push) showToast('Listing on your stores…', 'success');
             try {
-                const images = await uploadListingPhotos(bulkListingPhotos.map((photo) => photo.file));
+                const images = await uploadListingPhotos(bulkListingPhotos.map((photo) => photo.file).filter(Boolean));
                 const item = await createInventoryItem({
                     title,
                     description,
@@ -3377,6 +3875,8 @@
                 if (error.status === 401) return;
                 log('error', `Bulk listing failed: ${error.message}`);
                 showToast(error.message, 'error');
+            } finally {
+                setBulkListingBusy(false);
             }
         }
 
@@ -3935,6 +4435,10 @@
         }
 
         async function startBulkImport(platform) {
+            if (!isStoreEnabled(platform)) {
+                showToast('That store is not available right now', 'error');
+                return;
+            }
             if (showServerBannerIfNeeded()) {
                 showToast('Start the server with npm start', 'error');
                 return;
@@ -3958,15 +4462,17 @@
             try {
                 const mode = marketplaceAuth[platform]?.mode;
                 if (mode === 'extension') {
-                    if (!hasExtensionBridge()) {
+                    const importCommand = IMPORT_COMMANDS[platform];
+                    if (!hasExtensionBridge() || !importCommand) {
                         showExtensionInstallHelp();
                         throw new Error(
                             platform === 'facebook'
-                                ? 'Reconnect with the Chrome extension to import Facebook Marketplace listings.'
-                                : `Reconnect with the Chrome extension, or connect ${platformLabel(platform)} with OAuth instead.`
+                                ? 'Reconnect with the Chrome helper to import Facebook Marketplace listings.'
+                                : `Reconnect with the Chrome helper to import ${platformLabel(platform)} listings.`
                         );
                     }
-                    const result = await callExtension(IMPORT_COMMANDS[platform]);
+                    await ensureExtensionCommand(importCommand);
+                    const result = await callExtension(importCommand);
                     ingestExtensionLog(platform, result);
                     if (result.needsLogin) {
                         renderImportModal('error', result.message || `Sign in to ${platformLabel(platform)}, then try again.`);
@@ -4047,7 +4553,7 @@
         function isPushableListingId(platform, listingId) {
             const id = String(listingId || '').trim();
             if (!id || /^(demo_|local_|item_)/i.test(id)) return false;
-            if (['facebook', 'ebay', 'etsy'].includes(platform) && !/^\d{6,}$/.test(id)) return false;
+            if (['facebook', 'ebay', 'etsy', 'reverb'].includes(platform) && !/^\d{6,}$/.test(id)) return false;
             return true;
         }
 
@@ -4097,7 +4603,9 @@
                     'success'
                 );
                 try {
-                    const pushResult = await callExtension(PRICE_PUSH_COMMANDS[job.platform], {
+                    const pushCommand = PRICE_PUSH_COMMANDS[job.platform];
+                    await ensureExtensionCommand(pushCommand);
+                    const pushResult = await callExtension(pushCommand, {
                         listings: job.listings,
                     });
                     if (pushResult?.error) throw new Error(pushResult.error);
@@ -4154,9 +4662,24 @@
             }
         }
 
+        function liveOAuthReady(platform) {
+            const creds = marketplaceAuth.credentials || {};
+            if (platform === 'ebay') return Boolean(creds.ebayLiveMode);
+            if (platform === 'depop') return Boolean(creds.depopLiveMode);
+            if (platform === 'etsy') return Boolean(creds.etsyLiveMode);
+            if (platform === 'reverb') return Boolean(creds.reverbLiveMode);
+            return false;
+        }
+
         function connectWithOAuth(platform) {
-            if (platform === 'facebook') {
-                connectWithExtension('facebook');
+            if (!isStoreEnabled(platform)) {
+                showToast('That store is not available right now', 'error');
+                return;
+            }
+            const preferHelper = !liveOAuthReady(platform)
+                || hasExtensionBridge();
+            if (preferHelper) {
+                connectWithExtension(platform);
                 return;
             }
             if (showServerBannerIfNeeded()) {
@@ -4164,11 +4687,15 @@
                 return;
             }
             if (marketplaceAuth[platform]?.connected) return;
-            log('info', `Connecting ${platformLabel(platform)} with OAuth...`);
+            log('info', `Connecting ${platformLabel(platform)}...`);
             window.location.href = `${getApiBase()}/api/auth/${platform}`;
         }
 
         async function connectWithExtension(platform) {
+            if (!isStoreEnabled(platform)) {
+                showToast('That store is not available right now', 'error');
+                return;
+            }
             if (showServerBannerIfNeeded()) {
                 showToast('Start the server with npm start', 'error');
                 return;
@@ -4180,17 +4707,23 @@
                 depop: 'CONNECT_DEPOP',
                 poshmark: 'CONNECT_POSHMARK',
                 etsy: 'CONNECT_ETSY',
+                reverb: 'CONNECT_REVERB',
             };
+            const btn = document.getElementById(`${platform}-auth-btn`)
+                || document.getElementById(`${platform}-google-btn`);
+            const previousLabel = btn?.textContent;
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Connecting...';
+            }
             log('info', platform === 'poshmark'
                 ? 'Connecting Poshmark with Google SSO...'
-                : `Connecting ${platformLabel(platform)} via Chrome extension...`);
+                : `Connecting ${platformLabel(platform)}...`);
             try {
-                if (!hasExtensionBridge()) {
-                    showExtensionInstallHelp();
-                    throw new Error('Install the Crosslist Chrome extension to use this option');
-                }
-
-                const extensionResult = await callExtension(commands[platform]);
+                const command = commands[platform];
+                if (!command) throw new Error(`${platformLabel(platform)} connect is not available yet`);
+                await ensureExtensionCommand(command);
+                const extensionResult = await callExtension(command);
                 ingestExtensionLog(platform, extensionResult);
                 if (extensionResult.needsLogin) {
                     showToast(extensionResult.message, 'error');
@@ -4203,8 +4736,13 @@
 
                 await finishMarketplaceConnect(platform, extensionResult);
             } catch (error) {
-                log('error', `${platformLabel(platform)} extension connect failed: ` + error.message);
+                log('error', `${platformLabel(platform)} connect failed: ` + error.message);
                 showToast(error.message, 'error');
+            } finally {
+                if (btn && !marketplaceAuth[platform]?.connected) {
+                    btn.disabled = false;
+                    btn.textContent = previousLabel;
+                }
             }
         }
 
@@ -4281,37 +4819,65 @@
             }
         }
 
+        async function dropStaleExtensionSessions(status) {
+            const platforms = ['ebay', 'reverb'].filter(
+                (platform) => status[platform]?.connected && status[platform]?.mode === 'extension'
+            );
+            if (!platforms.length || !hasExtensionBridge()) return status;
+            let sessions;
+            try {
+                sessions = await callExtension('SESSION_STATUS', { platforms });
+            } catch {
+                return status;
+            }
+            for (const platform of platforms) {
+                if (sessions?.[platform]?.session !== false) continue;
+                try {
+                    await apiFetch('/api/auth/disconnect', {
+                        method: 'POST',
+                        body: JSON.stringify({ platform }),
+                    });
+                } catch {
+                    /* keep the marketplace card accurate even if disconnect fails */
+                }
+                status[platform] = { connected: false, mode: 'none', account: null };
+                showToast(`Reconnect ${platformLabel(platform)} — it isn't signed in in this browser`, 'error');
+            }
+            return status;
+        }
+
         async function checkAuthStatus() {
             if (showServerBannerIfNeeded()) {
                 updateAuthBadge('ebay', false);
-                updateAuthBadge('facebook', false);
                 updateAuthBadge('depop', false);
                 updateAuthBadge('poshmark', false);
                 updateAuthBadge('etsy', false);
+                updateAuthBadge('reverb', false);
                 renderBulkStorePicker();
                 return;
             }
             try {
-                const status = await apiFetch('/api/auth/status');
+                const status = await dropStaleExtensionSessions(await apiFetch('/api/auth/status'));
                 marketplaceAuth = {
                     ebay: status.ebay || { connected: false, mode: 'none' },
-                    facebook: status.facebook || { connected: false, mode: 'none' },
+                    facebook: { connected: false, mode: 'none' },
                     depop: status.depop || { connected: false, mode: 'none' },
                     poshmark: status.poshmark || { connected: false, mode: 'none' },
                     etsy: status.etsy || { connected: false, mode: 'none' },
+                    reverb: status.reverb || { connected: false, mode: 'none' },
                     credentials: status.credentials || {},
                 };
                 updateAuthBadge('ebay', status.ebay.connected, status.ebay.mode);
-                updateAuthBadge('facebook', status.facebook.connected, status.facebook.mode);
                 updateAuthBadge('depop', status.depop?.connected, status.depop?.mode);
                 updateAuthBadge('poshmark', status.poshmark?.connected, status.poshmark?.mode);
                 updateAuthBadge('etsy', status.etsy?.connected, status.etsy?.mode);
+                updateAuthBadge('reverb', status.reverb?.connected, status.reverb?.mode);
             } catch (error) {
                 updateAuthBadge('ebay', false);
-                updateAuthBadge('facebook', false);
                 updateAuthBadge('depop', false);
                 updateAuthBadge('poshmark', false);
                 updateAuthBadge('etsy', false);
+                updateAuthBadge('reverb', false);
                 if (error.status !== 401) {
                     log('error', `Auth status unavailable: ${error.message}`);
                 }
@@ -4322,6 +4888,7 @@
         function updateAuthBadge(platform, connected, mode = 'demo') {
             const badge = document.getElementById(`${platform}-auth`);
             const btn = document.getElementById(`${platform}-auth-btn`);
+            if (!badge || !btn) return;
             const disconnectBtn = document.getElementById(`${platform}-disconnect-btn`);
             const labels = {
                 ebay: 'eBay',
@@ -4329,6 +4896,7 @@
                 depop: 'Depop',
                 poshmark: 'Poshmark',
                 etsy: 'Etsy',
+                reverb: 'Reverb',
             };
             const label = labels[platform] || platform;
             const extensionBtn = document.getElementById(`${platform}-extension-btn`);
@@ -4361,9 +4929,7 @@
                 badge.innerHTML = '<span class="dot"></span> Not connected';
                 btn.textContent = platform === 'poshmark'
                     ? 'Sign in'
-                    : platform === 'facebook'
-                        ? 'Connect Facebook'
-                        : `Connect ${label}`;
+                    : `Connect ${label}`;
                 btn.disabled = false;
                 if (disconnectBtn) disconnectBtn.hidden = true;
                 if (extensionBtn) extensionBtn.hidden = false;
@@ -4473,6 +5039,18 @@
                 const cells = INVENTORY_PLATFORMS.map((platform) =>
                     `<td class="mkt-col">${marketplaceCellHtml(listing, platform.id)}</td>`
                 ).join('');
+                const photos = listingPhotoList(listing);
+                const canReorder = photos.length > 1;
+                const photoStrip = photos.length
+                    ? `<div class="inv-photo-strip" data-listing-id="${escapeHtml(listing.id)}" title="${canReorder ? 'Drag photos to change the order. The first one is the cover.' : ''}">
+                            ${photos.map((image, index) => `
+                                <div class="inv-photo-thumb ${index === 0 ? 'is-cover' : ''} ${canReorder ? '' : 'solo'}" data-index="${index}" role="button" aria-label="${index === 0 ? 'Cover photo' : `Photo ${index + 1}`}">
+                                    <img src="${escapeHtml(displayThumbUrl(image))}" alt="" referrerpolicy="no-referrer" loading="lazy">
+                                    ${index === 0 ? '<span class="photo-cover-badge">Cover</span>' : ''}
+                                </div>
+                            `).join('')}
+                       </div>`
+                    : '';
                 return `
                 <tr class="${selectedIds.has(listing.id) ? 'selected' : ''}" data-id="${listing.id}">
                     <td class="item-col">
@@ -4484,6 +5062,7 @@
                                 ${listing.category && listing.category !== 'other' && typeof categoryLabel === 'function' ? `<div class="inv-category">${escapeHtml(categoryLabel(listing.category))}</div>` : ''}
                                 ${sku ? `<div class="inv-item-sku">${sku}</div>` : ''}
                                 ${flag}
+                                ${photoStrip}
                             </div>
                             <div class="inv-item-actions">
                                 <details class="inv-more">
@@ -4677,7 +5256,7 @@
             const price = document.getElementById('new-price').value;
             const quantity = document.getElementById('new-quantity').value;
             const image = document.getElementById('new-image').value.trim();
-            const files = [...(document.getElementById('new-photos')?.files || [])];
+            const files = [...(document.getElementById('new-photos')?.files || [])].filter(isPhotoFile);
 
             if (!title) {
                 showToast('Title is required', 'error');

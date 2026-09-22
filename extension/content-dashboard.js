@@ -8,22 +8,37 @@ window.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.type !== 'CROSSLIST_EXT_REQUEST') return;
 
-  chrome.runtime.sendMessage(
-    {
+  const port = chrome.runtime.connect({ name: 'dashboard' });
+  let done = false;
+  const finish = (response) => {
+    if (done) return;
+    done = true;
+    try {
+      port.disconnect();
+    } catch {
+      /* already closed */
+    }
+    window.postMessage(
+      {
+        type: 'CROSSLIST_EXT_RESPONSE',
+        requestId: data.requestId,
+        response,
+      },
+      window.location.origin
+    );
+  };
+
+  port.onMessage.addListener((response) => finish(response || {}));
+  port.onDisconnect.addListener(() => {
+    const error = chrome.runtime.lastError?.message;
+    finish({ error: error || 'The Chrome helper disconnected. Reload it and try again.' });
+  });
+  try {
+    port.postMessage({
       command: data.command,
       payload: data.payload || {},
-    },
-    (response) => {
-      const error = chrome.runtime.lastError;
-      if (error) console.error('[crosslist dashboard bridge]', error.message);
-      window.postMessage(
-        {
-          type: 'CROSSLIST_EXT_RESPONSE',
-          requestId: data.requestId,
-          response: error ? { error: error.message } : response,
-        },
-        window.location.origin
-      );
-    }
-  );
+    });
+  } catch (error) {
+    finish({ error: error.message || 'Could not reach the Chrome helper' });
+  }
 });

@@ -19,8 +19,10 @@ const DB_PATH = path.join(DATA_DIR, 'crosslist.db');
 const STORE_FILE = path.join(DATA_DIR, 'store.json');
 
 export const SESSION_COOKIE = 'crosslist_sid';
+export const IDENTITY_COOKIE = 'crosslist_who';
 export const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
-export const PLATFORMS = ['ebay', 'facebook', 'depop', 'poshmark', 'etsy'];
+const OAUTH_STATE_MS = 15 * 60 * 1000;
+export const PLATFORMS = ['ebay', 'facebook', 'depop', 'poshmark', 'etsy', 'reverb'];
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -161,15 +163,85 @@ export function cookieSecurity() {
   return `Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
 }
 
-export function setSessionCookie(res, sessionId) {
+function signingSecret() {
+  const parts = [
+    process.env.SESSION_SECRET,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.EBAY_CLIENT_SECRET,
+  ].filter(Boolean);
+  return parts.length ? parts.join(':') : 'crosslist-dev-session';
+}
+
+export function signValue(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', signingSecret()).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+export function unsignValue(token, maxAgeMs) {
+  const raw = String(token || '');
+  const idx = raw.lastIndexOf('.');
+  if (idx <= 0) return null;
+  const body = raw.slice(0, idx);
+  const sig = raw.slice(idx + 1);
+  const expected = crypto.createHmac('sha256', signingSecret()).update(body).digest('base64url');
+  const left = Buffer.from(sig);
+  const right = Buffer.from(expected);
+  if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (!payload || typeof payload !== 'object') return null;
+    if (maxAgeMs && payload.t && Date.now() - Number(payload.t) > maxAgeMs) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function googleIdForUser(userId) {
+  if (!userId) return '';
+  return db.prepare('SELECT google_id FROM users WHERE id = ?').get(userId)?.google_id || '';
+}
+
+export function setSessionCookie(res, sessionId, user) {
   res.append(
     'Set-Cookie',
     `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; ${cookieSecurity()}; Max-Age=${Math.floor(SESSION_MS / 1000)}`
+  );
+  if (!user?.id || !user?.email) return;
+  const token = signValue({
+    id: user.id,
+    email: user.email,
+    name: user.name || '',
+    google_id: user.google_id || googleIdForUser(user.id),
+    t: Date.now(),
+  });
+  res.append(
+    'Set-Cookie',
+    `${IDENTITY_COOKIE}=${encodeURIComponent(token)}; ${cookieSecurity()}; Max-Age=${Math.floor(SESSION_MS / 1000)}`
   );
 }
 
 export function clearSessionCookie(res) {
   res.append('Set-Cookie', `${SESSION_COOKIE}=; ${cookieSecurity()}; Max-Age=0`);
+  res.append('Set-Cookie', `${IDENTITY_COOKIE}=; ${cookieSecurity()}; Max-Age=0`);
+}
+
+export function restoreUserFromIdentityCookie(cookies) {
+  const payload = unsignValue(cookies?.[IDENTITY_COOKIE], SESSION_MS);
+  if (!payload?.id || !payload?.email) return null;
+  const existing = loadUser(payload.id);
+  if (existing) return existing;
+  if (!payload.google_id) return null;
+  try {
+    return findOrCreateGoogleUser({
+      googleId: payload.google_id,
+      email: payload.email,
+      name: payload.name || '',
+    }).user;
+  } catch {
+    return null;
+  }
 }
 
 function publicUser(row) {
@@ -208,6 +280,11 @@ function applyConnection(user, row) {
     user.etsyRefreshToken = row.refresh_token;
     user.etsyTokenExpires = row.token_expires;
     user.etsyAccount = row.account;
+  } else if (row.platform === 'reverb') {
+    user.reverbToken = row.access_token;
+    user.reverbRefreshToken = row.refresh_token;
+    user.reverbTokenExpires = row.token_expires;
+    user.reverbAccount = row.account;
   }
 }
 
@@ -284,6 +361,21 @@ function extractConnection(user, platform) {
         etsyExtension: Boolean(user.etsyExtension),
         etsyUserId: user.etsyUserId || null,
         etsyShopId: user.etsyShopId || null,
+      },
+    };
+  }
+  if (platform === 'reverb' && user.reverbToken) {
+    return {
+      mode: user.reverbExtension ? 'extension' : user.reverbDemo ? 'demo' : 'live',
+      access_token: user.reverbToken,
+      refresh_token: user.reverbRefreshToken || null,
+      token_expires: user.reverbTokenExpires || null,
+      account: user.reverbAccount || null,
+      extra: {
+        reverbDemo: Boolean(user.reverbDemo),
+        reverbExtension: Boolean(user.reverbExtension),
+        reverbUserId: user.reverbUserId || null,
+        reverbShopId: user.reverbShopId || null,
       },
     };
   }
@@ -564,17 +656,48 @@ export function saveOAuthState(state, userId, platform, extra = {}) {
   ).run(state, userId, platform, JSON.stringify(extra || {}), Date.now());
 }
 
-export function consumeOAuthState(state) {
-  if (!state) return null;
+export function issueOAuthState(userId, platform, extra = {}) {
+  const payload = {
+    u: userId || '',
+    p: platform,
+    e: extra || {},
+    t: Date.now(),
+  };
+  const state = signValue(payload);
+  try {
+    saveOAuthState(state, userId || '', platform, extra);
+  } catch {
+    // Vercel /tmp sqlite can fail across instances; the signed state is enough.
+  }
+  return state;
+}
+
+function readOAuthStateRow(state) {
   const row = db.prepare('SELECT * FROM oauth_states WHERE state = ?').get(state);
   if (!row) return null;
   db.prepare('DELETE FROM oauth_states WHERE state = ?').run(state);
-  const maxAge = 15 * 60 * 1000;
-  if (Date.now() - row.created_at > maxAge) return null;
+  if (Date.now() - row.created_at > OAUTH_STATE_MS) return null;
   return {
     userId: row.user_id,
     platform: row.platform,
     extra: row.extra_json ? JSON.parse(row.extra_json) : {},
+  };
+}
+
+export function consumeOAuthState(state) {
+  if (!state) return null;
+  try {
+    const row = readOAuthStateRow(state);
+    if (row) return row;
+  } catch {
+    // Fall through to the signed token when sqlite is empty or ephemeral.
+  }
+  const payload = unsignValue(state, OAUTH_STATE_MS);
+  if (!payload?.p) return null;
+  return {
+    userId: payload.u || '',
+    platform: payload.p,
+    extra: payload.e && typeof payload.e === 'object' ? payload.e : {},
   };
 }
 
@@ -653,6 +776,19 @@ export function listActivity(userId, limit = 400) {
 export function clearActivity(userId) {
   if (!userId) return;
   db.prepare('DELETE FROM activity_logs WHERE user_id = ?').run(userId);
+}
+
+const FAILURE_ID = /^[0-9a-zA-Z_-]{8,80}$/;
+
+export function hasListingFailure(userId, failureId) {
+  if (!userId || !FAILURE_ID.test(String(failureId || ''))) return false;
+  const marker = `"failureId":"${failureId}"`;
+  const row = db.prepare(`
+    SELECT id FROM activity_logs
+    WHERE user_id = ? AND instr(detail_json, ?) > 0
+    LIMIT 1
+  `).get(userId, marker);
+  return Boolean(row);
 }
 
 function claimLegacyStore(userId) {

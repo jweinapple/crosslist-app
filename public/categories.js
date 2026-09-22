@@ -21,9 +21,11 @@
                  fields: [['event', 'Event', 'e.g. Taylor Swift'], ['date', 'Date', 'e.g. Aug 9, 2026'], ['venue', 'Venue'], ['seats', 'Section, row and seats', 'e.g. Sec 112, Row 8, Seats 5–6'],
                           ['delivery', 'How are the tickets delivered?', '', ['Mobile transfer', 'PDF', 'Other']]],
                  note: 'Some ticket sites limit resale or how tickets can be transferred. Check the rules for where you bought them before you post.' },
+    music:     { label: 'Music & gear', titleHint: 'e.g. Fender Player Stratocaster, sunburst', descHint: 'Make, model, year, and any wear or modifications.',
+                 fields: [['brand', 'Make / brand', 'e.g. Fender'], ['model', 'Model', 'e.g. Stratocaster'], ['year', 'Year', 'e.g. 2019']] },
     other:     { label: 'Something else', titleHint: 'Item title', descHint: 'Item description', fields: [] }
   };
-  var ORDER = ['clothing', 'furniture', 'home', 'tech', 'tickets', 'other'];
+  var ORDER = ['clothing', 'furniture', 'home', 'tech', 'tickets', 'music', 'other'];
 
   // used by the inventory list
   window.categoryLabel = function (key) { return (CATEGORIES[key] || {}).label || ''; };

@@ -208,7 +208,7 @@
 
         <div class="preview">
           <label class="shot" id="shot">
-            <input id="photo" type="file" accept="image/*">
+            <input id="photo" type="file" accept="image/*,.heic,.heif,.hiec">
             <div class="empty">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.5l1.2-1.6A1 1 0 0 1 9.5 4h5a1 1 0 0 1 .8.4L16.5 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
               <strong>Add a photo</strong>
@@ -283,7 +283,7 @@
         </div>
         <div class="facts">
           <div><h3>What you’ll take home</h3><p>Before you post, we show an estimate of what you’d keep after each site’s fees, so there are no surprises.</p></div>
-          <div><h3>How you get paid</h3><p>Buyers pay through each site’s own checkout, and the site pays you out. Local sales, like Facebook pickups, are usually settled in person.</p></div>
+          <div><h3>How you get paid</h3><p>Buyers pay through each site’s own checkout, and the site pays you out. Local pickup sales are usually settled in person.</p></div>
           <div><h3>What similar items sold for</h3><p>We’re working on showing recent sale prices next to your price, so you can choose one with confidence.</p></div>
         </div>
       </div>
@@ -314,21 +314,23 @@
   var CATS = [
     { id: 'tickets',   label: 'Event tickets',    eg: 'Concerts, sports, theater',         best: ['stubhub', 'ticketmaster', 'ebay'],
       icon: '<path d="M4 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8Z"/><path d="M14 6v12" stroke-dasharray="2 2.5"/>' },
-    { id: 'furniture', label: 'Furniture',        eg: 'Sofas, tables, dressers, desks',    best: ['facebook', 'chairish', 'ebay'],
+    { id: 'furniture', label: 'Furniture',        eg: 'Sofas, tables, dressers, desks',    best: ['chairish', 'ebay'],
       icon: '<path d="M5 11V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v3"/><path d="M3 13a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v4H3v-4Z"/><path d="M6 17v2M18 17v2"/>' },
-    { id: 'home',      label: 'Home & decor',     eg: 'Lamps, rugs, art, kitchenware',     best: ['chairish', 'facebook', 'ebay'],
+    { id: 'home',      label: 'Home & decor',     eg: 'Lamps, rugs, art, kitchenware',     best: ['chairish', 'ebay'],
       icon: '<path d="M9 3h6l1.5 6h-9L9 3Z"/><path d="M12 9v9"/><path d="M8 21h8"/>' },
-    { id: 'tech',      label: 'Phones & tech',    eg: 'iPhones, laptops, accessories',     best: ['ebay', 'facebook'],
+    { id: 'tech',      label: 'Phones & tech',    eg: 'iPhones, laptops, accessories',     best: ['ebay'],
       icon: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>' },
-    { id: 'clothing',  label: 'Clothing & shoes', eg: 'Jackets, jeans, sneakers, bags',    best: ['poshmark', 'ebay', 'facebook'],
+    { id: 'clothing',  label: 'Clothing & shoes', eg: 'Jackets, jeans, sneakers, bags',    best: ['poshmark', 'ebay'],
       icon: '<path d="M12 6a2 2 0 1 0-2-2"/><path d="M12 6v2l8 5a1.5 1.5 0 0 1-.8 2.8H4.8A1.5 1.5 0 0 1 4 13l8-5"/>' },
-    { id: 'other',     label: 'Something else',   eg: 'Books, toys, collectibles, tools',  best: ['ebay', 'facebook'],
+    { id: 'music',     label: 'Music & gear',     eg: 'Guitars, pedals, mics, amps',        best: ['reverb', 'ebay'],
+      icon: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>' },
+    { id: 'other',     label: 'Something else',   eg: 'Books, toys, collectibles, tools',  best: ['ebay'],
       icon: '<path d="M4 8l8-4 8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/>' }
   ];
   var STORES = [
     { id: 'ebay',         name: 'eBay',                 live: true,  blurb: 'A huge audience for almost anything, shipped anywhere.', tags: ['Almost anything'] },
-    { id: 'facebook',     name: 'Facebook Marketplace', live: true,  blurb: 'Great for bulky things people pick up locally.',        tags: ['Furniture', 'Home', 'Tech'] },
     { id: 'poshmark',     name: 'Poshmark',             live: true,  blurb: 'Built around fashion, with shoppers who love a deal.',  tags: ['Clothing', 'Shoes', 'Accessories'] },
+    { id: 'reverb',       name: 'Reverb',               live: true,  blurb: 'The marketplace for musical instruments and audio gear.', tags: ['Guitars', 'Pedals', 'Mics'] },
     { id: 'stubhub',      name: 'StubHub',              live: false, blurb: 'A marketplace made for buying and selling event tickets.', tags: ['Tickets'] },
     { id: 'ticketmaster', name: 'Ticketmaster',         live: false, blurb: 'Resale for events. Their transfer rules apply, so check them first.', tags: ['Tickets'] },
     { id: 'chairish',     name: 'Chairish',             live: false, blurb: 'Vintage and design-minded furniture and decor.',        tags: ['Furniture', 'Decor'] }
@@ -338,7 +340,8 @@
     tech:      /\b(iphone|ipad|macbook|laptop|phone|samsung|pixel|airpods?|charger|case|camera|tv|monitor|playstation|xbox|switch|console|headphones?|watch|apple|android)\b/i,
     furniture: /\b(sofa|couch|chair|table|desk|dresser|bed|nightstand|bookshelf|shelf|cabinet|ottoman|stool|bench|wardrobe)\b/i,
     home:      /\b(lamp|rug|vase|mirror|art|painting|candle|pillow|curtain|kitchen|dish|plate|pot|pan|decor|frame|blanket)\b/i,
-    clothing:  /\b(jacket|jeans|shirt|dress|shoes?|sneakers?|nike|adidas|boots?|coat|sweater|hoodie|bag|purse|levi|pants|skirt)\b/i
+    clothing:  /\b(jacket|jeans|shirt|dress|shoes?|sneakers?|nike|adidas|boots?|coat|sweater|hoodie|bag|purse|levi|pants|skirt)\b/i,
+    music:     /\b(guitar|bass|amp|amplifier|pedal|synth|drum|snare|cymbal|microphone|mic|fender|gibson|strat|telecaster|keyboard|mixer|audio)\b/i
   };
   var byId = function (list, id) { return list.filter(function (x) { return x.id === id; })[0]; };
   var detect = function (t) { for (var k in KEYWORDS) if (KEYWORDS[k].test(t)) return k; return null; };
@@ -347,9 +350,8 @@
   // (Approximate, standard rates in USD; excludes shipping, taxes, promoted listings and payment extras.)
   var FEES = {
     ebay:     { name: 'eBay',                 net: function (p) { var f = p * 0.1325 + (p <= 10 ? 0.30 : 0.40); return { fee: f, note: 'about 13% + 40\u00a2' }; } },
-    facebook: { name: 'Facebook Marketplace', net: function (p) { var f = Math.max(0.80, p * 0.10); return { fee: f, note: 'about 10% if shipped' }; },
-                local: 'No fee for local pickup' },
-    poshmark: { name: 'Poshmark',             net: function (p) { return p > 15 ? { fee: p * 0.20, note: '20%' } : { fee: 2.95, note: 'flat $2.95' }; } }
+    poshmark: { name: 'Poshmark',             net: function (p) { return p > 15 ? { fee: p * 0.20, note: '20%' } : { fee: 2.95, note: 'flat $2.95' }; } },
+    reverb:   { name: 'Reverb',               net: function (p) { return { fee: p * 0.05, note: 'about 5%' }; } }
   };
   var money = function (n) { return '$' + n.toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
 
@@ -465,20 +467,38 @@
   }
 
   // resize the photo so it's light enough to carry to the next page
+  function isPhotoFile(file) {
+    if (!file) return false;
+    if (/^image\//.test(file.type || '')) return true;
+    return /\.(jpe?g|png|webp|gif|heic|heif|hiec)$/i.test(file.name || '');
+  }
+  function usePhotoCanvas(canvas) {
+    state.photo = canvas.toDataURL('image/jpeg', 0.85);
+    var shot = $('shot'); var old = shot.querySelector('img'); if (old) old.remove();
+    var im = document.createElement('img'); im.alt = 'Your photo'; im.src = state.photo; shot.appendChild(im); shot.classList.add('has-photo');
+    render(); setTimeout(function () { $('title').focus({ preventScroll: true }); }, 60);
+  }
+  function drawPhoto(source, width, height) {
+    var max = 900, r = Math.min(1, max / Math.max(width, height));
+    var c = document.createElement('canvas'); c.width = Math.round(width * r); c.height = Math.round(height * r);
+    c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
+    if (source.close) source.close();
+    usePhotoCanvas(c);
+  }
   function loadPhoto(file) {
-    if (!file || !/^image\//.test(file.type)) return;
+    if (!isPhotoFile(file)) return;
     var img = new Image(); var url = URL.createObjectURL(file);
     img.onload = function () {
-      var max = 900, r = Math.min(1, max / Math.max(img.width, img.height));
-      var c = document.createElement('canvas'); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      state.photo = c.toDataURL('image/jpeg', 0.85);
       URL.revokeObjectURL(url);
-      var shot = $('shot'); var old = shot.querySelector('img'); if (old) old.remove();
-      var im = document.createElement('img'); im.alt = 'Your photo'; im.src = state.photo; shot.appendChild(im); shot.classList.add('has-photo');
-      render(); setTimeout(function () { $('title').focus({ preventScroll: true }); }, 60);
+      drawPhoto(img, img.width, img.height);
     };
-    img.onerror = function () { URL.revokeObjectURL(url); };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      if (typeof createImageBitmap !== 'function') return;
+      createImageBitmap(file).then(function (bitmap) {
+        drawPhoto(bitmap, bitmap.width, bitmap.height);
+      }).catch(function () {});
+    };
     img.src = url;
   }
   $('photo').addEventListener('change', function () { loadPhoto(this.files[0]); });

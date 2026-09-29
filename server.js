@@ -2396,6 +2396,182 @@ async function createReverbListingViaApi(user, listing) {
   };
 }
 
+async function createDepopListingViaApi(user, listing) {
+  const imageUrls = (listing.images || []).filter((url) => /^https:\/\//i.test(url));
+  const payload = {
+    name: String(listing.title || '').slice(0, 200),
+    description: String(listing.description || listing.title || ''),
+    price_amount: Math.round(Number(listing.price || 0) * 100),
+    currency: 'USD',
+    category_id: 1,
+    condition: mapDepopCondition(listing.condition),
+    quantity: listing.quantity || 1,
+  };
+
+  if (imageUrls.length > 0) {
+    payload.pictures = imageUrls.slice(0, 4).map((url) => ({ url }));
+  }
+
+  try {
+    const response = await axios.post(
+      'https://partnerapi.depop.com/api/v1/products/',
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${user.depopToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 20000,
+      }
+    );
+
+    const created = response.data || {};
+    const listingId = String(created.id || created.slug || '');
+    const url = created.slug ? `https://www.depop.com/products/${created.slug}` : null;
+
+    if (!listingId) {
+      return {
+        status: 'error',
+        listingId: null,
+        url: null,
+        needsReview: false,
+        error: 'Depop did not create the listing',
+      };
+    }
+
+    return {
+      status: 'active',
+      listingId,
+      url,
+      needsReview: false,
+    };
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.response?.data?.errors?.[0]?.message ||
+      error.message ||
+      'Depop listing failed';
+    throw new Error(message);
+  }
+}
+
+function mapDepopCondition(condition) {
+  const key = String(condition || 'used_good').toLowerCase().replace(/\s+/g, '_');
+  const conditionMap = {
+    new: 'new_with_tags',
+    brand_new: 'new_with_tags',
+    like_new: 'new_without_tags',
+    mint: 'new_without_tags',
+    used_excellent: 'used_excellent',
+    excellent: 'used_excellent',
+    used_good: 'used_good',
+    used_fair: 'used_fair',
+    fair: 'used_fair',
+    poor: 'used_fair',
+  };
+  return conditionMap[key] || 'used_good';
+}
+
+async function createEtsyListingViaApi(user, listing) {
+  let shopId = user.etsyShopId;
+  if (!shopId) {
+    const me = await axios.get('https://api.etsy.com/v3/application/users/me', {
+      headers: etsyApiHeaders(user.etsyToken),
+    });
+    const userId = me.data.user_id || me.data.userId;
+    const shops = await axios.get(`https://api.etsy.com/v3/application/users/${userId}/shops`, {
+      headers: etsyApiHeaders(user.etsyToken),
+    });
+    const shop = shops.data?.shop_id ? shops.data : shops.data?.results?.[0] || shops.data?.shops?.[0];
+    shopId = shop?.shop_id || shop?.shopId;
+    if (shopId) {
+      user.etsyShopId = shopId;
+      persistStore();
+    }
+  }
+
+  if (!shopId) {
+    const error = new Error('Etsy shop ID not found. Connect your Etsy shop from Marketplaces.');
+    error.code = 'etsy_shop_required';
+    throw error;
+  }
+
+  const quantity = listing.quantity || 1;
+  const price = Number(listing.price || 0).toFixed(2);
+  const payload = {
+    title: String(listing.title || '').slice(0, 140),
+    description: String(listing.description || listing.title || ''),
+    price,
+    quantity,
+    who_made: 'i_did',
+    when_made: '2020_2026',
+    taxonomy_id: 1,
+    is_supply: false,
+    should_auto_renew: false,
+    type: 'physical',
+  };
+
+  const imageUrls = (listing.images || []).filter((url) => /^https:\/\//i.test(url));
+
+  try {
+    const response = await axios.post(
+      `https://openapi.etsy.com/v3/application/shops/${shopId}/listings`,
+      payload,
+      {
+        headers: etsyApiHeaders(user.etsyToken),
+        timeout: 20000,
+      }
+    );
+
+    const created = response.data || {};
+    const listingId = String(created.listing_id || created.id || '');
+    const url = `https://www.etsy.com/listing/${listingId}`;
+
+    if (!listingId) {
+      return {
+        status: 'error',
+        listingId: null,
+        url: null,
+        needsReview: false,
+        error: 'Etsy did not create the listing',
+      };
+    }
+
+    if (imageUrls.length > 0) {
+      try {
+        for (const imageUrl of imageUrls.slice(0, 10)) {
+          await axios.post(
+            `https://openapi.etsy.com/v3/application/shops/${shopId}/listings/${listingId}/images`,
+            { image_url: imageUrl },
+            {
+              headers: etsyApiHeaders(user.etsyToken),
+              timeout: 20000,
+            }
+          );
+        }
+      } catch (imageError) {
+        logError('Etsy image upload', imageError);
+      }
+    }
+
+    return {
+      status: 'active',
+      listingId,
+      url,
+      needsReview: false,
+    };
+  } catch (error) {
+    const message =
+      error.response?.data?.error ||
+      error.response?.data?.message ||
+      error.response?.data?.errors?.[0]?.message ||
+      error.message ||
+      'Etsy listing failed';
+    throw new Error(message);
+  }
+}
+
 async function pushListingToStores(listing, user, platforms) {
   const results = [];
   const extensionTasks = [];
@@ -2463,6 +2639,48 @@ async function pushListingToStores(listing, user, platforms) {
           error.message ||
           'Reverb listing failed';
         const result = { platform, status: 'error', error: message, needsReview: false };
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, mode });
+      }
+      continue;
+    }
+
+    if (platform === 'depop' && mode === 'live') {
+      try {
+        const result = await createDepopListingViaApi(user, next);
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, platform, mode });
+      } catch (error) {
+        const message =
+          error.response?.data?.message ||
+          error.response?.data?.error ||
+          error.message ||
+          'Depop listing failed';
+        const result = { platform, status: 'error', error: message, needsReview: false };
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, mode });
+      }
+      continue;
+    }
+
+    if (platform === 'etsy' && mode === 'live') {
+      try {
+        const result = await createEtsyListingViaApi(user, next);
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, platform, mode });
+      } catch (error) {
+        const message =
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          error.message ||
+          'Etsy listing failed';
+        const result = {
+          platform,
+          status: 'error',
+          error: message,
+          needsReview: false,
+          needsShop: error.code === 'etsy_shop_required',
+        };
         next = applyPlatformResult(next, platform, result);
         results.push({ ...result, mode });
       }

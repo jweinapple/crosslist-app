@@ -340,9 +340,7 @@ function getEtsyApiKey() {
 
 const etsyLiveMode = !isPlaceholder(getEtsyApiKey());
 
-const reverbLiveMode =
-  !isPlaceholder(process.env.REVERB_CLIENT_ID) &&
-  !isPlaceholder(process.env.REVERB_CLIENT_SECRET);
+const reverbLiveMode = true;
 
 const googleLiveMode =
   !isPlaceholder(process.env.GOOGLE_CLIENT_ID) &&
@@ -2340,6 +2338,22 @@ async function createReverbListingViaApi(user, listing) {
   const model = String(details.model || words.slice(1).join(' ') || title).slice(0, 80);
   const photos = (listing.images || []).filter((url) => /^https:\/\//i.test(url));
   const quantity = Math.max(1, Number(listing.quantity) || 1);
+  
+  let categoryUuid = null;
+  try {
+    const categorySearch = await axios.get(
+      `https://api.reverb.com/api/categories?q=${encodeURIComponent(title.slice(0, 50))}`,
+      { 
+        headers: reverbApiHeaders(user.reverbToken), 
+        timeout: 5000 
+      }
+    );
+    const categories = categorySearch.data?.categories || [];
+    categoryUuid = categories[0]?.uuid || null;
+  } catch (error) {
+    logError('Reverb category lookup', error);
+  }
+
   const payload = {
     title,
     make,
@@ -2356,44 +2370,252 @@ async function createReverbListingViaApi(user, listing) {
     has_inventory: true,
     inventory: quantity,
     shipping: { local: true },
+    publish: true,
   };
+  
   if (details.year) payload.year = String(details.year);
-  const response = await axios.post(
-    'https://api.reverb.com/api/listings',
-    payload,
-    { headers: reverbApiHeaders(user.reverbToken), timeout: 20000 }
-  );
-  const created = response.data || {};
-  const listingId = String(created.id || created.listing_id || '');
-  const url = created._links?.web?.href || (listingId ? `https://reverb.com/item/${listingId}` : null);
-  const slug = String(created.state?.slug || created.state || '').toLowerCase();
-  const live = slug === 'live' || slug === 'published' || slug === 'active';
-  if (!listingId) {
-    return {
-      status: 'error',
-      listingId: null,
-      url: null,
-      needsReview: false,
-      error: 'Reverb did not create the listing',
-    };
+  if (categoryUuid) {
+    payload.categories = [{ uuid: categoryUuid }];
   }
-  if (!live) {
-    try {
-      await axios.put(
-        `https://api.reverb.com/api/listings/${encodeURIComponent(listingId)}`,
-        { state: { slug: 'live' } },
-        { headers: reverbApiHeaders(user.reverbToken), timeout: 20000 }
-      );
-    } catch (error) {
-      logError('Reverb publish', error);
+
+  try {
+    const response = await axios.post(
+      'https://api.reverb.com/api/listings',
+      payload,
+      { headers: reverbApiHeaders(user.reverbToken), timeout: 20000 }
+    );
+    
+    const created = response.data || {};
+    const listingId = String(created.id || created.listing_id || '');
+    const url = created._links?.web?.href || (listingId ? `https://reverb.com/item/${listingId}` : null);
+    const slug = String(created.state?.slug || created.state || '').toLowerCase();
+    const isLive = slug === 'live' || slug === 'published' || slug === 'active';
+    
+    if (!listingId) {
+      return {
+        status: 'error',
+        listingId: null,
+        url: null,
+        needsReview: false,
+        error: 'Reverb did not return a listing ID',
+      };
+    }
+
+    if (!isLive) {
+      try {
+        await axios.put(
+          `https://api.reverb.com/api/listings/${encodeURIComponent(listingId)}`,
+          { state: { slug: 'live' } },
+          { headers: reverbApiHeaders(user.reverbToken), timeout: 15000 }
+        );
+      } catch (publishError) {
+        logError('Reverb publish after create', publishError);
+        return {
+          status: 'draft',
+          listingId,
+          url,
+          needsReview: true,
+          error: 'Listing created but could not be published automatically',
+        };
+      }
+    }
+
+    return {
+      status: 'active',
+      listingId,
+      url,
+      needsReview: false,
+    };
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.response?.data?.errors?.[0] ||
+      error.message ||
+      'Reverb listing failed';
+    
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      throw new Error('Invalid or expired Reverb token. Reconnect Reverb from Marketplaces.');
+    }
+    
+    throw new Error(String(message));
+  }
+}
+
+async function createDepopListingViaApi(user, listing) {
+  const imageUrls = (listing.images || []).filter((url) => /^https:\/\//i.test(url));
+  const payload = {
+    name: String(listing.title || '').slice(0, 200),
+    description: String(listing.description || listing.title || ''),
+    price_amount: Math.round(Number(listing.price || 0) * 100),
+    currency: 'USD',
+    category_id: 1,
+    condition: mapDepopCondition(listing.condition),
+    quantity: listing.quantity || 1,
+  };
+
+  if (imageUrls.length > 0) {
+    payload.pictures = imageUrls.slice(0, 4).map((url) => ({ url }));
+  }
+
+  try {
+    const response = await axios.post(
+      'https://partnerapi.depop.com/api/v1/products/',
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${user.depopToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 20000,
+      }
+    );
+
+    const created = response.data || {};
+    const listingId = String(created.id || created.slug || '');
+    const url = created.slug ? `https://www.depop.com/products/${created.slug}` : null;
+
+    if (!listingId) {
+      return {
+        status: 'error',
+        listingId: null,
+        url: null,
+        needsReview: false,
+        error: 'Depop did not create the listing',
+      };
+    }
+
+    return {
+      status: 'active',
+      listingId,
+      url,
+      needsReview: false,
+    };
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.response?.data?.errors?.[0]?.message ||
+      error.message ||
+      'Depop listing failed';
+    throw new Error(message);
+  }
+}
+
+function mapDepopCondition(condition) {
+  const key = String(condition || 'used_good').toLowerCase().replace(/\s+/g, '_');
+  const conditionMap = {
+    new: 'new_with_tags',
+    brand_new: 'new_with_tags',
+    like_new: 'new_without_tags',
+    mint: 'new_without_tags',
+    used_excellent: 'used_excellent',
+    excellent: 'used_excellent',
+    used_good: 'used_good',
+    used_fair: 'used_fair',
+    fair: 'used_fair',
+    poor: 'used_fair',
+  };
+  return conditionMap[key] || 'used_good';
+}
+
+async function createEtsyListingViaApi(user, listing) {
+  let shopId = user.etsyShopId;
+  if (!shopId) {
+    const me = await axios.get('https://api.etsy.com/v3/application/users/me', {
+      headers: etsyApiHeaders(user.etsyToken),
+    });
+    const userId = me.data.user_id || me.data.userId;
+    const shops = await axios.get(`https://api.etsy.com/v3/application/users/${userId}/shops`, {
+      headers: etsyApiHeaders(user.etsyToken),
+    });
+    const shop = shops.data?.shop_id ? shops.data : shops.data?.results?.[0] || shops.data?.shops?.[0];
+    shopId = shop?.shop_id || shop?.shopId;
+    if (shopId) {
+      user.etsyShopId = shopId;
+      persistStore();
     }
   }
-  return {
-    status: 'active',
-    listingId,
-    url,
-    needsReview: false,
+
+  if (!shopId) {
+    const error = new Error('Etsy shop ID not found. Connect your Etsy shop from Marketplaces.');
+    error.code = 'etsy_shop_required';
+    throw error;
+  }
+
+  const quantity = listing.quantity || 1;
+  const price = Number(listing.price || 0).toFixed(2);
+  const payload = {
+    title: String(listing.title || '').slice(0, 140),
+    description: String(listing.description || listing.title || ''),
+    price,
+    quantity,
+    who_made: 'i_did',
+    when_made: '2020_2026',
+    taxonomy_id: 1,
+    is_supply: false,
+    should_auto_renew: false,
+    type: 'physical',
   };
+
+  const imageUrls = (listing.images || []).filter((url) => /^https:\/\//i.test(url));
+
+  try {
+    const response = await axios.post(
+      `https://openapi.etsy.com/v3/application/shops/${shopId}/listings`,
+      payload,
+      {
+        headers: etsyApiHeaders(user.etsyToken),
+        timeout: 20000,
+      }
+    );
+
+    const created = response.data || {};
+    const listingId = String(created.listing_id || created.id || '');
+    const url = `https://www.etsy.com/listing/${listingId}`;
+
+    if (!listingId) {
+      return {
+        status: 'error',
+        listingId: null,
+        url: null,
+        needsReview: false,
+        error: 'Etsy did not create the listing',
+      };
+    }
+
+    if (imageUrls.length > 0) {
+      try {
+        for (const imageUrl of imageUrls.slice(0, 10)) {
+          await axios.post(
+            `https://openapi.etsy.com/v3/application/shops/${shopId}/listings/${listingId}/images`,
+            { image_url: imageUrl },
+            {
+              headers: etsyApiHeaders(user.etsyToken),
+              timeout: 20000,
+            }
+          );
+        }
+      } catch (imageError) {
+        logError('Etsy image upload', imageError);
+      }
+    }
+
+    return {
+      status: 'active',
+      listingId,
+      url,
+      needsReview: false,
+    };
+  } catch (error) {
+    const message =
+      error.response?.data?.error ||
+      error.response?.data?.message ||
+      error.response?.data?.errors?.[0]?.message ||
+      error.message ||
+      'Etsy listing failed';
+    throw new Error(message);
+  }
 }
 
 async function pushListingToStores(listing, user, platforms) {
@@ -2463,6 +2685,48 @@ async function pushListingToStores(listing, user, platforms) {
           error.message ||
           'Reverb listing failed';
         const result = { platform, status: 'error', error: message, needsReview: false };
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, mode });
+      }
+      continue;
+    }
+
+    if (platform === 'depop' && mode === 'live') {
+      try {
+        const result = await createDepopListingViaApi(user, next);
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, platform, mode });
+      } catch (error) {
+        const message =
+          error.response?.data?.message ||
+          error.response?.data?.error ||
+          error.message ||
+          'Depop listing failed';
+        const result = { platform, status: 'error', error: message, needsReview: false };
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, mode });
+      }
+      continue;
+    }
+
+    if (platform === 'etsy' && mode === 'live') {
+      try {
+        const result = await createEtsyListingViaApi(user, next);
+        next = applyPlatformResult(next, platform, result);
+        results.push({ ...result, platform, mode });
+      } catch (error) {
+        const message =
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          error.message ||
+          'Etsy listing failed';
+        const result = {
+          platform,
+          status: 'error',
+          error: message,
+          needsReview: false,
+          needsShop: error.code === 'etsy_shop_required',
+        };
         next = applyPlatformResult(next, platform, result);
         results.push({ ...result, mode });
       }
@@ -3210,16 +3474,10 @@ async function fetchLiveEtsyCandidates(user) {
 }
 
 // ======================
-// REVERB OAUTH
+// REVERB PERSONAL TOKEN
 // ======================
-
-function getReverbRedirectUri() {
-  return process.env.REVERB_REDIRECT_URI || `${BASE_URL}/api/auth/reverb/callback`;
-}
-
-function getReverbScopes() {
-  return process.env.REVERB_SCOPES || 'public read_listings write_listings read_orders write_orders read_profile';
-}
+// Note: Reverb OAuth is no longer available (as of Sep 2026).
+// Users authenticate with personal access tokens from https://reverb.com/my/api_settings
 
 function reverbApiHeaders(accessToken) {
   return {
@@ -3231,89 +3489,93 @@ function reverbApiHeaders(accessToken) {
   };
 }
 
-app.get('/api/auth/reverb', (req, res) => {
-  if (!reverbLiveMode) {
-    if (!requirePageLogin(req, res)) return;
-    return redirectToExtensionConnect(res, 'reverb');
-  }
-  if (!requirePageLogin(req, res)) return;
-  return res.redirect('/api/auth/reverb/live');
-});
-
-app.get('/api/auth/reverb/live', (req, res) => {
-  if (!reverbLiveMode) {
-    return res.redirect('/dashboard.html?oauthError=reverb#marketplaces');
-  }
-  const state = beginOAuth(req, res, 'reverb');
-  if (!state) return;
-  const authUrl =
-    'https://reverb.com/oauth/authorize?' +
-    new URLSearchParams({
-      response_type: 'code',
-      client_id: process.env.REVERB_CLIENT_ID,
-      redirect_uri: getReverbRedirectUri(),
-      scope: getReverbScopes(),
-      state,
-    });
-  res.redirect(authUrl);
-});
-
-app.get('/api/auth/reverb/callback', async (req, res) => {
-  const { code, state, error } = req.query;
-  if (error || !code) {
-    return res.redirect('/dashboard.html?oauthError=reverb#marketplaces');
-  }
-
-  const oauthResult = userFromOAuthState(String(state || ''));
-  if (!oauthResult?.user) {
-    return res.redirect('/dashboard.html?oauthError=reverb#marketplaces');
-  }
-
+async function validateReverbToken(token) {
   try {
-    const tokenResponse = await axios.post(
-      'https://reverb.com/oauth/token',
-      new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: process.env.REVERB_CLIENT_ID,
-        client_secret: process.env.REVERB_CLIENT_SECRET,
-        redirect_uri: getReverbRedirectUri(),
-        code: String(code),
-      }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-    );
+    const response = await axios.get('https://api.reverb.com/api/my/account', {
+      headers: reverbApiHeaders(token),
+      timeout: 10000,
+    });
+    
+    const data = response.data || {};
+    return {
+      valid: true,
+      userId: data.id || data.user_id || null,
+      account: data.shop?.name || data.username || data.email || 'reverb-user',
+      shopId: data.shop?.id || null,
+    };
+  } catch (error) {
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      return { valid: false, error: 'Invalid or expired Reverb token' };
+    }
+    logError('Reverb token validation', error);
+    return { 
+      valid: false, 
+      error: error.message || 'Could not validate Reverb token' 
+    };
+  }
+}
 
-    const { access_token, refresh_token, expires_in } = tokenResponse.data;
-    let account = 'reverb-oauth';
-    let userId = null;
-    let shopId = null;
-    try {
-      const me = await axios.get('https://api.reverb.com/api/my/account', {
-        headers: reverbApiHeaders(access_token),
+app.get('/api/auth/reverb', (req, res) => {
+  if (!requirePageLogin(req, res)) return;
+  return res.json({
+    method: 'token',
+    message: 'Connect Reverb with a personal access token',
+    tokenUrl: 'https://reverb.com/my/api_settings',
+  });
+});
+
+app.post('/api/auth/reverb/connect', async (req, res) => {
+  try {
+    const user = getDemoUser();
+    const token = String(req.body?.token || '').trim();
+    
+    if (!token) {
+      return res.status(400).json({ 
+        error: 'Personal access token is required' 
       });
-      userId = me.data.id || me.data.user_id || null;
-      account = me.data.shop?.name || me.data.username || me.data.email || account;
-      shopId = me.data.shop?.id || null;
-    } catch (profileError) {
-      logError('Reverb profile lookup', profileError, { req });
+    }
+    
+    if (token.length < 20 || token.length > 200) {
+      return res.status(400).json({ 
+        error: 'Token format appears invalid' 
+      });
     }
 
-    const userData = oauthResult.user;
-    Object.assign(userData, {
-      reverbToken: access_token,
-      reverbRefreshToken: refresh_token,
-      reverbTokenExpires: expires_in ? Date.now() + expires_in * 1000 : null,
+    const validation = await validateReverbToken(token);
+    
+    if (!validation.valid) {
+      return res.status(401).json({ 
+        error: validation.error || 'Invalid Reverb token' 
+      });
+    }
+
+    Object.assign(user, {
+      reverbToken: token,
       reverbDemo: false,
       reverbExtension: false,
-      reverbAccount: account,
-      reverbUserId: userId,
-      reverbShopId: shopId,
+      reverbAccount: validation.account,
+      reverbUserId: validation.userId,
+      reverbShopId: validation.shopId,
+      reverbTokenExpires: null,
+      reverbRefreshToken: null,
     });
-    userStore.saveUser(userData);
+    userStore.saveUser(user);
 
-    res.redirect('/dashboard.html?connected=reverb#marketplaces');
-  } catch (oauthError) {
-    logError('Reverb OAuth', oauthError, { req });
-    res.redirect('/dashboard.html?oauthError=reverb#marketplaces');
+    recordActivity('success', `Connected Reverb account: ${validation.account}`, {
+      source: 'server',
+      platform: 'reverb',
+    });
+
+    return res.json({
+      connected: true,
+      mode: 'live',
+      account: validation.account,
+    });
+  } catch (error) {
+    logError('Reverb connect', error, { req });
+    return res.status(500).json({ 
+      error: 'Failed to connect Reverb account' 
+    });
   }
 });
 
@@ -4195,24 +4457,104 @@ app.post('/api/listings/facebook', (_req, res) => {
   return res.status(400).json({ error: disabledStoreMessage('facebook') });
 });
 
+async function endReverbListing(token, listingId) {
+  const id = String(listingId).replace(/^reverb_/, '');
+  try {
+    await axios.put(
+      `https://api.reverb.com/api/listings/${encodeURIComponent(id)}`,
+      { state: { slug: 'ended' } },
+      {
+        headers: reverbApiHeaders(token),
+        timeout: 15000,
+      }
+    );
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function endEbayListing(token, listingId) {
+  const id = String(listingId).replace(/^ebay_/, '');
+  try {
+    await axios.post(
+      `${getEbayApiBase()}/sell/inventory/v1/offer/${encodeURIComponent(id)}/withdraw`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      }
+    );
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return;
+    }
+    logError('eBay end listing API', error);
+  }
+}
+
 // Delete a listing
 app.delete('/api/listings/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const user = getDemoUser();
     const listing = listings.get(id);
     
     if (!listing) {
       return res.status(404).send('Listing not found');
     }
     
+    const platforms = getPlatforms(listing);
+    const deletionResults = [];
+
+    // End/delete from connected platforms
+    if (platforms.reverb?.listingId && user.reverbToken) {
+      try {
+        await endReverbListing(user.reverbToken, platforms.reverb.listingId);
+        deletionResults.push({ platform: 'reverb', success: true });
+      } catch (error) {
+        logError('End Reverb listing', error);
+        deletionResults.push({ 
+          platform: 'reverb', 
+          success: false, 
+          error: error.message 
+        });
+      }
+    }
+
+    if (platforms.ebay?.listingId && user.ebayToken) {
+      try {
+        await endEbayListing(user.ebayToken, platforms.ebay.listingId);
+        deletionResults.push({ platform: 'ebay', success: true });
+      } catch (error) {
+        logError('End eBay listing', error);
+        deletionResults.push({ 
+          platform: 'ebay', 
+          success: false, 
+          error: error.message 
+        });
+      }
+    }
+    
     // Remove from our storage
     listings.delete(id);
     
-    // Note: In a real implementation, you would also delete/archive from the actual platforms
-    // For eBay, you'd end the listing
-    // For Facebook, you'd delete the product from the catalog
+    recordActivity('info', `Deleted listing: ${listing.title}`, {
+      source: 'server',
+      listingId: id,
+      platformDeletions: deletionResults,
+    });
     
-    res.json({ success: true, message: 'Listing removed' });
+    res.json({ 
+      success: true, 
+      message: 'Listing removed',
+      platformDeletions: deletionResults,
+    });
   } catch (error) {
     logError('Delete listing', error, { req });
     res.status(500).json({ error: 'Failed to delete listing' });

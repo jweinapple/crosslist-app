@@ -11,6 +11,18 @@ A seller dashboard for inventory, import, and listing across eBay, Facebook Mark
 
 Facebook Marketplace has no public listing API, so that connection uses the **Crosslist Connector** Chrome extension and your existing browser login.
 
+## Auto-list flow (photos → confirm → distributed)
+
+1. Open the Sell page and upload **only photos** of the item — no descriptions or details to type.
+2. The app identifies the exact product (brand, model, size, color, condition) and suggests a market price from eBay sold comps. Requires `VISION_API_KEY` (see `.env.example`).
+3. One confirmation screen shows what was found — *"Is this [product] at $[price] what you intended to list?"* — confirm or correct the product and/or price. This is not per-marketplace configuration.
+4. The listing is then distributed automatically:
+   - **eBay** — listed via the eBay Sell API (needs one-time eBay OAuth connect, plus Seller Hub fulfillment/payment/return policies and an enabled inventory location).
+   - **Facebook Marketplace** — queued for the Crosslist Connector extension, which fills in and publishes the listing in your logged-in Facebook browser session.
+   - **Grailed** — Grailed offers no listing API, so the extension pre-fills the sell form for you to review and publish yourself (or follow the guided checklist). It never publishes without you.
+
+Per-marketplace status (listed / queued / guided / needs review / failed) is shown live, and failures are logged for review.
+
 ## Run locally
 
 You need Node.js 24.

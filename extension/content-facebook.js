@@ -367,3 +367,395 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return true;
 });
+
+// ---------------------------------------------------------------------------
+// FILL_FACEBOOK_LISTING — automatic distribution target.
+//
+// HONEST AUTOMATION NOTES:
+// - This drives the Marketplace composer (facebook.com/marketplace/create/item)
+//   inside the user's own logged-in browser session. There is no Facebook
+//   listing API; the server only queued a job and never touches Facebook.
+// - It requires: (a) the Crosslist Connector extension installed, (b) the
+//   user signed into Facebook in this Chrome profile, (c) the dashboard
+//   relaying the job to the extension.
+// - Everything is driven by the job payload (title, price, description,
+//   category, condition, photo data URLs). There is intentionally NO per-item
+//   prompt or confirmation inside this script: the single user confirmation
+//   happened on the server side before the job was queued.
+// - The script clicks "Publish" automatically when every required field was
+//   filled. Facebook's composer DOM changes often, so every field uses
+//   multiple selector fallbacks and the result reports per-field success plus
+//   an extracted listing id when the publish redirect can be observed. When
+//   the redirect cannot be verified, the result says so instead of claiming
+//   success.
+// ---------------------------------------------------------------------------
+
+function fbSetNativeValue(el, value) {
+  if (!el) return false;
+  try {
+    el.focus();
+  } catch {
+    /* focus is best effort */
+  }
+  if (el.isContentEditable) {
+    el.textContent = String(value);
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, data: String(value) }));
+    return true;
+  }
+  const proto =
+    el instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+  try {
+    el._valueTracker?.setValue?.('');
+  } catch {
+    /* not a React-tracked input */
+  }
+  descriptor?.set?.call(el, String(value));
+  el.value = String(value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  el.dispatchEvent(
+    new InputEvent('input', { bubbles: true, data: String(value), inputType: 'insertText' })
+  );
+  return true;
+}
+
+function fbFieldHaystack(el) {
+  const labelText = el.labels
+    ? [...el.labels].map((label) => label.textContent || '').join(' ')
+    : '';
+  const groupText = String(el.closest('label, [role="group"], div')?.innerText || '').slice(0, 160);
+  return [
+    el.getAttribute('aria-label'),
+    el.getAttribute('placeholder'),
+    el.getAttribute('name'),
+    el.id,
+    el.getAttribute('title'),
+    labelText,
+    groupText,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function fbFindTextbox(keywords) {
+  const wanted = keywords.map((word) => String(word).toLowerCase());
+  const nodes = [
+    ...document.querySelectorAll('input, textarea, [contenteditable="true"], [role="textbox"]'),
+  ].filter((el) => {
+    if (el.disabled || el.readOnly) return false;
+    const type = String(el.type || '').toLowerCase();
+    return !['hidden', 'file', 'checkbox', 'radio', 'submit', 'button'].includes(type);
+  });
+  return (
+    nodes.find((el) => {
+      const aria = String(el.getAttribute('aria-label') || '').toLowerCase();
+      return wanted.some((word) => aria === word || aria.startsWith(`${word} `));
+    }) ||
+    nodes.find((el) => {
+      const hay = fbFieldHaystack(el);
+      return wanted.some((word) => hay.includes(word));
+    })
+  );
+}
+
+function fbDataUrlToFile(dataUrl, index) {
+  const [header, encoded] = String(dataUrl || '').split(',');
+  const mime = header.match(/data:([^;]+)/i)?.[1] || 'image/jpeg';
+  const binary = atob(encoded || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+  return new File([bytes], `crosslist-${index + 1}.${ext}`, { type: mime });
+}
+
+async function fbUploadPhotos(dataUrls = []) {
+  const files = (dataUrls || [])
+    .filter((url) => String(url).startsWith('data:image/'))
+    .map((url, index) => fbDataUrlToFile(url, index));
+  if (!files.length) return { ok: false, count: 0, error: 'No usable photos in job payload' };
+  const inputs = [...document.querySelectorAll('input[type="file"]')];
+  const input =
+    inputs.find((el) => /image/i.test(el.getAttribute('accept') || '')) || inputs[0];
+  if (!input) return { ok: false, count: 0, error: 'Photo upload input not found' };
+  const transfer = new DataTransfer();
+  files.forEach((file) => transfer.items.add(file));
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  await sleep(1500);
+  return { ok: true, count: files.length };
+}
+
+async function fbWaitForComposer(timeoutMs = 20000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const ready =
+      fbFindTextbox(['title']) ||
+      document.querySelector('input[type="file"]') ||
+      /\/marketplace\/create/i.test(window.location.pathname);
+    if (ready && (fbFindTextbox(['title']) || document.querySelector('input[type="file"]'))) {
+      return true;
+    }
+    await sleep(400);
+  }
+  return false;
+}
+
+function fbNormalized(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+async function fbSelectCategory(category) {
+  const wanted = fbNormalized(category);
+  if (!wanted) return { ok: false, skipped: true };
+  const field =
+    document.querySelector('[role="combobox"][aria-label*="ategor" i]') ||
+    fbFindTextbox(['category']);
+  if (!field) return { ok: false, error: 'Category field not found' };
+  field.click();
+  field.focus();
+  await sleep(900);
+  const options = [
+    ...document.querySelectorAll('[role="option"], [role="listbox"] [role="button"], ul[role="listbox"] li'),
+  ].filter((el) => (el.innerText || '').trim().length);
+  if (!options.length) return { ok: false, error: 'Category options did not open' };
+  const words = wanted.split(' ').filter((word) => word.length > 2);
+  const match =
+    options.find((el) => fbNormalized(el.innerText) === wanted) ||
+    options.find((el) => {
+      const text = fbNormalized(el.innerText);
+      return words.length > 0 && words.every((word) => text.includes(word));
+    }) ||
+    options.find((el) => {
+      const text = fbNormalized(el.innerText);
+      return words.some((word) => text.includes(word));
+    });
+  if (!match) {
+    document.body.click();
+    return { ok: false, error: `No category matched "${category}"` };
+  }
+  match.click();
+  await sleep(600);
+  return { ok: true, selected: (match.innerText || '').trim().slice(0, 80) };
+}
+
+function fbSelectCondition(condition) {
+  // Condition arrives as free text from the identity step ("Like new",
+  // "used_good", "Good", ...). Match FB's buttons fuzzily; default to Used.
+  const text = fbNormalized(condition);
+  let hints;
+  if (/\bnew\b/.test(text) && !/used|pre.?owned|second/.test(text)) {
+    hints = ['new'];
+  } else if (/like.?new|excellent|mint/.test(text)) {
+    hints = ['used', 'like new'];
+  } else if (/fair|worn|damage/.test(text)) {
+    hints = ['used', 'fair'];
+  } else if (/good|great|nice/.test(text)) {
+    hints = ['used', 'good'];
+  } else {
+    hints = ['used'];
+  }
+  const buttons = [...document.querySelectorAll('button, [role="button"], [role="radio"]')];
+  const match = buttons.find((el) => {
+    const label = fbNormalized(el.innerText || el.getAttribute('aria-label') || '');
+    return hints.every((hint) => label.includes(hint));
+  });
+  if (!match) return { ok: false, error: `Condition option not found for "${condition}"` };
+  match.click();
+  return { ok: true };
+}
+
+function fbClickPublish() {
+  const wanted = ['publish', 'list item', 'post'];
+  const buttons = [...document.querySelectorAll('button, [role="button"], input[type="submit"]')];
+  const match = buttons.find((el) => {
+    const text = `${el.innerText || ''} ${el.getAttribute('aria-label') || ''}`
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+    return wanted.some((label) => text === label);
+  });
+  if (!match || match.disabled) return false;
+  match.click();
+  return true;
+}
+
+function fbExtractListingId() {
+  const href = window.location.href;
+  const match = href.match(/\/marketplace\/item\/(\d{6,})/i);
+  if (match?.[1]) return match[1];
+  const param = new URLSearchParams(window.location.search).get('listing_id');
+  return /^\d{6,}$/.test(param || '') ? param : null;
+}
+
+async function fillFacebookListing(job = {}) {
+  const payload = job.payload || job;
+  const jobId = job.jobId || payload.jobId || null;
+  const trace = [];
+  const filled = {};
+  const note = (message) => {
+    trace.push({ at: new Date().toISOString(), message });
+    console.log(`[crosslist fb-fill] ${message}`);
+  };
+
+  if (!isFacebookLoggedIn()) {
+    return {
+      success: false,
+      jobId,
+      needsLogin: true,
+      error: 'Not signed in to Facebook in this browser. Sign in, then the job can be retried.',
+      step: 'checking Facebook session',
+      url: window.location.href,
+    };
+  }
+
+  const composerReady = await fbWaitForComposer();
+  if (!composerReady) {
+    return {
+      success: false,
+      jobId,
+      error: 'Marketplace composer did not load',
+      step: 'waiting for the listing composer',
+      url: window.location.href,
+      trace,
+    };
+  }
+  note('Composer ready');
+
+  const photoResult = await fbUploadPhotos(payload.images || []);
+  filled.photos = photoResult.ok ? photoResult.count : 0;
+  note(photoResult.ok ? `Uploaded ${photoResult.count} photo(s)` : `Photo upload issue: ${photoResult.error}`);
+  if (!photoResult.ok) {
+    return {
+      success: false,
+      jobId,
+      error: photoResult.error || 'Photo upload failed',
+      step: 'uploading photos',
+      url: window.location.href,
+      filled,
+      trace,
+    };
+  }
+
+  const title = fbFindTextbox(['title']);
+  filled.title = Boolean(payload.title && title && fbSetNativeValue(title, String(payload.title).slice(0, 100)));
+  await sleep(300);
+  note(`Title: ${filled.title ? 'filled' : 'NOT filled'}`);
+
+  const price = fbFindTextbox(['price']);
+  const priceValue =
+    payload.price != null && payload.price !== '' ? Number(payload.price).toFixed(2).replace(/\.00$/, '') : '';
+  filled.price = Boolean(priceValue && price && fbSetNativeValue(price, priceValue));
+  await sleep(300);
+  note(`Price: ${filled.price ? 'filled' : 'NOT filled'}`);
+
+  const category = await fbSelectCategory(payload.category);
+  filled.category = Boolean(category.ok);
+  note(category.ok ? `Category: ${category.selected}` : `Category issue: ${category.error || 'skipped'}`);
+
+  const condition = fbSelectCondition(payload.condition);
+  filled.condition = Boolean(condition.ok);
+  note(condition.ok ? 'Condition selected' : `Condition issue: ${condition.error}`);
+
+  const description = fbFindTextbox(['description']);
+  filled.description = Boolean(
+    payload.description && description && fbSetNativeValue(description, payload.description)
+  );
+  await sleep(300);
+  note(`Description: ${filled.description ? 'filled' : 'NOT filled'}`);
+
+  const required = ['title', 'price'];
+  const missing = required.filter((key) => !filled[key]);
+  if (missing.length) {
+    return {
+      success: false,
+      jobId,
+      error: `Required fields not filled: ${missing.join(', ')}`,
+      step: 'filling the listing form',
+      url: window.location.href,
+      filled,
+      trace,
+    };
+  }
+
+  await sleep(800);
+  const publishClicked = fbClickPublish();
+  note(publishClicked ? 'Publish clicked' : 'Publish button not found or disabled');
+  if (!publishClicked) {
+    return {
+      success: false,
+      jobId,
+      error: 'Publish button not found or disabled',
+      step: 'publishing the listing',
+      url: window.location.href,
+      filled,
+      needsReview: true,
+      trace,
+    };
+  }
+
+  // Give Facebook a moment to submit and redirect to the new listing page.
+  const start = Date.now();
+  let listingId = null;
+  while (Date.now() - start < 12000) {
+    await sleep(1000);
+    listingId = fbExtractListingId();
+    if (listingId) break;
+  }
+
+  const url = window.location.href;
+  if (listingId) {
+    note(`Published as listing ${listingId}`);
+    return {
+      success: true,
+      jobId,
+      published: true,
+      listingId,
+      url,
+      filled,
+      verification: 'redirect',
+      trace,
+    };
+  }
+
+  // The button was clicked but the publish could not be verified (no
+  // redirect to /marketplace/item/<id> within the timeout). Report this
+  // honestly instead of claiming success.
+  note('Publish clicked but the new listing URL was not observed');
+  return {
+    success: true,
+    jobId,
+    published: false,
+    listingId: null,
+    url,
+    filled,
+    needsReview: true,
+    verification: 'unverified',
+    error: 'Publish was submitted but the listing could not be verified',
+    trace,
+  };
+}
+
+if (!globalThis.__crosslistFbFillListener) {
+  globalThis.__crosslistFbFillListener = true;
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.command !== 'FILL_FACEBOOK_LISTING') return;
+    fillFacebookListing(message.payload?.job || {})
+      .then(sendResponse)
+      .catch((error) =>
+        sendResponse({
+          success: false,
+          jobId: message.payload?.job?.jobId || null,
+          error: error?.message || 'Facebook form fill failed',
+          step: 'filling the listing form',
+          url: window.location.href,
+        })
+      );
+    return true;
+  });
+}
+

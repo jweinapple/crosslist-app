@@ -21,6 +21,8 @@
     "https://www.etsy.com/*",
     "https://reverb.com/*",
     "https://www.reverb.com/*",
+    "https://www.grailed.com/*",
+    "https://grailed.com/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
@@ -89,6 +91,14 @@
         "https://www.reverb.com/*"
       ],
       "js": ["scrape-utils.js", "content-reverb.js", "content-create.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.grailed.com/*",
+        "https://grailed.com/*"
+      ],
+      "js": ["scrape-utils.js", "content-grailed.js"],
       "run_at": "document_idle"
     }
   ],

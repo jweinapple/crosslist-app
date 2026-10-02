@@ -34,6 +34,7 @@ function ebayLoginUrl() {
 
 const CONTENT_SCRIPTS = {
   SCRAPE_FACEBOOK_LISTINGS: ['scrape-utils.js', 'content-facebook.js'],
+  FILL_FACEBOOK_LISTING: ['scrape-utils.js', 'content-facebook.js'],
   SCRAPE_EBAY_LISTINGS: ['scrape-utils.js', 'content-ebay.js'],
   SCRAPE_DEPOP_LISTINGS: ['scrape-utils.js', 'content-depop.js'],
   SCRAPE_POSHMARK_LISTINGS: ['scrape-utils.js', 'content-poshmark.js'],
@@ -972,7 +973,164 @@ const CREATE_URLS = {
   depop: 'https://www.depop.com/products/create/',
   poshmark: 'https://poshmark.com/create-listing',
   etsy: 'https://www.etsy.com/your/shops/me/tools/listings/create',
+  grailed: 'https://www.grailed.com/sell/new',
 };
+
+const FB_CREATE_URL = CREATE_URLS.facebook;
+
+// ---------------------------------------------------------------------------
+// CREATE_FACEBOOK_LISTING — automatic distribution target.
+//
+// HONEST AUTOMATION NOTES:
+// - This is the only way listings reach Facebook Marketplace: there is no
+//   Marketplace listing API, so the server queues a job (see
+//   server/facebook-distribute.js) and this function drives the composer in
+//   the user's own logged-in browser session.
+// - Requirements at run time: (a) this extension installed, (b) the user
+//   signed into Facebook in this Chrome profile, (c) the dashboard open so
+//   it can relay the job here and POST the result back to the server.
+// - Photo delivery goes through createMarketplaceListings (the single choke
+//   point that converts /uploads URLs to data URLs). This wrapper never
+//   touches content scripts or photo fetching directly.
+// ---------------------------------------------------------------------------
+async function createFacebookListingFromJob(payload = {}) {
+  const job = payload.job || {};
+  const jobId = job.jobId || job.payload?.jobId || null;
+  const listing = job.payload || {};
+  const trace = createTrace('facebook distribute');
+
+  // The browser session IS the Facebook credential. Fail fast with a clear
+  // message instead of opening composer tabs that cannot publish.
+  const fbUserId = await getFacebookUserId();
+  if (!fbUserId) {
+    const error =
+      'Not signed in to Facebook in this browser. Sign in to Facebook, then retry the job.';
+    trace.note('No Facebook session');
+    const failure = compactListingFailure(
+      { id: jobId || 'facebook_job', title: listing.title },
+      'facebook',
+      { error, detail: { source: 'extension', step: 'checking Facebook session' } },
+      trace.steps
+    );
+    await rememberListingFailure(failure);
+    return {
+      success: false,
+      jobId,
+      error,
+      step: 'checking Facebook session',
+      needsLogin: true,
+      needsReview: false,
+      failureId: failure.id,
+      trace: trace.steps,
+    };
+  }
+  trace.note(`Facebook session present (user ${fbUserId})`);
+
+  const distributed = await createMarketplaceListings({
+    platforms: ['facebook'],
+    listing,
+    dashboardOrigin: payload.dashboardOrigin || listing.dashboardOrigin || '',
+    autoPublish: true,
+    jobId,
+  });
+  const row = distributed.results?.[0] || {};
+  const published = row.status === 'active';
+  const needsReview = Boolean(row.needsReview);
+  return {
+    success: published,
+    published,
+    jobId,
+    listingId: row.listingId || null,
+    url: row.url || null,
+    needsReview,
+    filled: Boolean(row.filled),
+    error: published
+      ? null
+      : row.error ||
+        (needsReview
+          ? 'The listing form was filled but publishing could not be completed automatically — the composer tab was left open for review.'
+          : 'Facebook distribution failed'),
+    step: published ? null : 'auto-publishing the listing',
+    failureId: row.failure?.id || null,
+    trace: distributed.log || [],
+  };
+}
+
+// Drives the Facebook Marketplace composer for one auto-distribution job:
+// fills title/price/description/category/condition/photos from the prepared
+// payload and clicks Publish. Returns the content script's result verbatim.
+// Tab lifecycle: the tab is closed on success or hard failure; it is left
+// open when the form was filled but publishing needs a human (needsReview),
+// so the seller can finish it by hand.
+async function publishFacebookListingAuto(prepared, jobId, trace) {
+  let tab;
+  try {
+    tab = await chrome.tabs.create({ url: FB_CREATE_URL, active: false });
+    trace.note(`Opened Facebook composer tab ${tab.id} for auto-publish`);
+    await waitForTabLoad(tab.id);
+    await sleep(2500);
+    // content-facebook.js is injected on facebook.com by the manifest; this
+    // is a fallback in case the tab loaded before it ran.
+    await ensureContentScript(tab.id, 'FILL_FACEBOOK_LISTING');
+    await sleep(600);
+
+    let response = null;
+    let lastError = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        response = await chrome.tabs.sendMessage(tab.id, {
+          command: 'FILL_FACEBOOK_LISTING',
+          payload: { job: { ...prepared, jobId } },
+        });
+        if (response) break;
+      } catch (error) {
+        lastError = error;
+        trace.note(`Composer message attempt ${attempt + 1} failed: ${error.message}`);
+        await sleep(1200 + attempt * 500);
+        await ensureContentScript(tab.id, 'FILL_FACEBOOK_LISTING');
+      }
+    }
+
+    if (!response) {
+      return {
+        success: false,
+        published: false,
+        error: lastError?.message || 'Could not reach the Facebook composer tab',
+        step: 'driving the listing composer',
+        needsReview: false,
+      };
+    }
+
+    response.jobId = jobId;
+    trace.note(
+      response.success
+        ? `Composer finished: published=${Boolean(response.published)} listingId=${response.listingId || 'n/a'}`
+        : `Composer failed: ${response.error || 'unknown error'}`
+    );
+
+    if (tab?.id) {
+      if (response.needsReview) {
+        trace.note('Left the composer tab open for manual review');
+      } else {
+        await sleep(response.success ? 800 : 0);
+        await chrome.tabs.remove(tab.id).catch((closeError) =>
+          logError('close facebook auto-publish tab', closeError, { tabId: tab.id })
+        );
+      }
+    }
+    return response;
+  } catch (error) {
+    logError('publishFacebookListingAuto', error, { jobId });
+    return {
+      success: false,
+      published: false,
+      error: error.message || 'Facebook distribution failed',
+      step: 'distributing to Facebook',
+      needsReview: false,
+    };
+  }
+}
+
 
 const SESSION_LISTERS = {
   reverb: listOnReverb,
@@ -1030,6 +1188,21 @@ async function fetchImageAsDataUrl(url, dashboardOrigin) {
   );
 }
 
+// Single choke point for photo delivery (extension image contract):
+// converts /uploads URLs, absolute URLs, and data URLs into data URLs
+// (8MB / 8s caps in fetchImageAsDataUrl). Every create path — manual or
+// automatic — must go through here; background code never fetches photos
+// itself and never hands raw URLs to a content script.
+async function prepareListingImages(listing, dashboardOrigin, trace) {
+  const images = [];
+  for (const image of (listing.images || []).slice(0, 8)) {
+    const dataUrl = await fetchImageAsDataUrl(image, dashboardOrigin);
+    if (dataUrl) images.push(dataUrl);
+  }
+  trace?.note(`Prepared ${images.length} photo(s)`);
+  return images;
+}
+
 async function createMarketplaceListings(payload = {}) {
   const platforms = Array.isArray(payload.platforms) ? payload.platforms : [];
   const listing = payload.listing || payload.item || {};
@@ -1037,11 +1210,7 @@ async function createMarketplaceListings(payload = {}) {
   const trace = createTrace('create listing');
   const results = [];
 
-  const images = [];
-  for (const image of (listing.images || []).slice(0, 8)) {
-    const dataUrl = await fetchImageAsDataUrl(image, dashboardOrigin);
-    if (dataUrl) images.push(dataUrl);
-  }
+  const images = await prepareListingImages(listing, dashboardOrigin, trace);
   const prepared = { ...listing, images };
   trace.note(
     `Listing "${prepared.title || prepared.id}" on ${platforms.join(', ') || 'no stores'} with ${images.length} photo${images.length === 1 ? '' : 's'}`
@@ -1053,7 +1222,17 @@ async function createMarketplaceListings(payload = {}) {
     let tab;
     let response;
 
-    if (sessionLister) {
+    if (platform === 'facebook' && payload.autoPublish) {
+      // Automatic distribution: drive the FB composer and click Publish.
+      // Photo delivery already happened above via prepareListingImages.
+      trace.note(`Auto-publishing on ${platform} from distribution job ${payload.jobId || ''}`);
+      try {
+        response = await publishFacebookListingAuto(prepared, payload.jobId || null, trace);
+      } catch (error) {
+        logError('publishFacebookListingAuto', error, { platform });
+        response = { success: false, published: false, error: error.message, needsReview: false };
+      }
+    } else if (sessionLister) {
       trace.note(`Listing on ${platform} from Crosslist`);
       try {
         response = await sessionLister(prepared, trace);
@@ -1090,7 +1269,7 @@ async function createMarketplaceListings(payload = {}) {
           await waitForTabLoad(tab.id);
           await sleep(platform === 'ebay' ? 3500 : 2200);
           try {
-            await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-create.js'] });
+            await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [platform === 'grailed' ? 'content-grailed.js' : 'content-create.js'] });
           } catch (error) {
             logError('inject create script', error, { platform });
           }
@@ -1100,7 +1279,7 @@ async function createMarketplaceListings(payload = {}) {
           for (let attempt = 0; attempt < 4; attempt += 1) {
             try {
               response = await chrome.tabs.sendMessage(tab.id, {
-                command: 'CREATE_MARKETPLACE_LISTING',
+                command: platform === 'grailed' ? 'CREATE_GRAILED_LISTING' : 'CREATE_MARKETPLACE_LISTING',
                 payload: { platform, listing: prepared },
               });
               if (response) break;
@@ -1108,7 +1287,7 @@ async function createMarketplaceListings(payload = {}) {
               lastError = error;
               await sleep(900 + attempt * 400);
               try {
-                await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-create.js'] });
+                await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [platform === 'grailed' ? 'content-grailed.js' : 'content-create.js'] });
               } catch (injectError) {
                 logError('retry inject create script', injectError, { platform });
               }
@@ -1222,6 +1401,7 @@ const EXTENSION_COMMANDS = [
   'APPLY_ETSY_PRICES',
   'APPLY_REVERB_PRICES',
   'CREATE_MARKETPLACE_LISTINGS',
+  'CREATE_FACEBOOK_LISTING',
   'LISTING_FAILURES',
 ];
 
@@ -1263,6 +1443,8 @@ async function handleExtensionCommand(command, payload = {}) {
       return applyMarketplacePrices('reverb', payload.listings || []);
     case 'CREATE_MARKETPLACE_LISTINGS':
       return createMarketplaceListings(payload);
+    case 'CREATE_FACEBOOK_LISTING':
+      return createFacebookListingFromJob(payload);
     case 'LISTING_FAILURES':
       return listingFailureLog(payload.ack);
     default:
@@ -1284,6 +1466,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'dashboard') return;
+  // Remember the dashboard's origin so onConnectExternal can accept it on any
+  // host/port (dev on :3001, a deployed host, etc.) without a manifest edit.
+  // This port only fires from our own content scripts/pages, so the recorded
+  // origin is one where the user installed the extension and serves the
+  // dashboard — not an arbitrary website.
+  try {
+    const senderUrl = port.sender?.tab?.url || port.sender?.url || '';
+    if (senderUrl) {
+      const origin = new URL(senderUrl).origin;
+      if (/^https?:$/.test(new URL(origin).protocol)) {
+        chrome.storage.local
+          .set({ [TRUSTED_DASHBOARD_ORIGIN_KEY]: origin })
+          .catch(() => {});
+      }
+    }
+  } catch {
+    /* origin recording is best effort */
+  }
   port.onMessage.addListener(async (message) => {
     try {
       const result = await handleExtensionCommand(message.command, message.payload || {});
@@ -1295,19 +1495,74 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
+// The dashboard may be served from localhost:3000, another dev port, or a
+// deployed host. Hardcoding origins here broke the extension bridge anywhere
+// else, so allowed origins are resolved dynamically:
+//   1. the localhost dev defaults,
+//   2. the dashboard origin recorded when the dashboard last connected via
+//      the internal port (see onConnect above),
+//   3. the manifest's externally_connectable.matches patterns (so a future
+//      manifest change takes effect without editing this file).
+const DEFAULT_EXTERNAL_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const TRUSTED_DASHBOARD_ORIGIN_KEY = 'trustedDashboardOrigin';
+
+async function getTrustedDashboardOrigin() {
+  try {
+    const stored = await chrome.storage.local.get(TRUSTED_DASHBOARD_ORIGIN_KEY);
+    const origin = stored[TRUSTED_DASHBOARD_ORIGIN_KEY];
+    return typeof origin === 'string' && origin ? origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function matchPatternAllowsOrigin(pattern, origin) {
+  try {
+    const target = new URL(origin);
+    const match = String(pattern).match(/^(\*|https?):\/\/([^/]+)\//);
+    if (!match) return false;
+    const [, scheme, host] = match;
+    if (scheme !== '*' && target.protocol.replace(/:$/, '') !== scheme) return false;
+    if (host === '*') return true;
+    if (host.startsWith('*.')) {
+      const base = host.slice(2);
+      return target.hostname === base || target.hostname.endsWith(`.${base}`);
+    }
+    return target.host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+async function isExternalOriginAllowed(origin) {
+  if (!origin) return false;
+  if (DEFAULT_EXTERNAL_ORIGINS.includes(origin)) return true;
+  const trusted = await getTrustedDashboardOrigin();
+  if (trusted && origin === trusted) return true;
+  try {
+    const patterns = chrome.runtime.getManifest()?.externally_connectable?.matches || [];
+    return patterns.some((pattern) => matchPatternAllowsOrigin(pattern, origin));
+  } catch {
+    return false;
+  }
+}
+
 chrome.runtime.onConnectExternal.addListener((port) => {
   const origin = port.sender?.origin || '';
-  if (origin !== 'http://localhost:3000' && origin !== 'http://127.0.0.1:3000') {
-    port.disconnect();
-    return;
-  }
-  port.onMessage.addListener(async (message) => {
-    try {
-      const result = await handleExtensionCommand(message.command, message.payload || {});
-      port.postMessage({ ...message, result });
-    } catch (error) {
-      logError('extension port command', error, { command: message.command });
-      port.postMessage({ ...message, error: error.message });
+  isExternalOriginAllowed(origin).then((allowed) => {
+    if (!allowed) {
+      logError('onConnectExternal blocked origin', new Error(origin || '(none)'));
+      port.disconnect();
+      return;
     }
+    port.onMessage.addListener(async (message) => {
+      try {
+        const result = await handleExtensionCommand(message.command, message.payload || {});
+        port.postMessage({ ...message, result });
+      } catch (error) {
+        logError('extension port command', error, { command: message.command });
+        port.postMessage({ ...message, error: error.message });
+      }
+    });
   });
 });

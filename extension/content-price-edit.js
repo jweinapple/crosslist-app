@@ -125,7 +125,6 @@ async function maybeOpenEditor(platform) {
 }
 
 const PLATFORM_SELECTORS = {
-  facebook: [],
   ebay: ['#binPrice', 'input[name="binPrice"]', 'input[name="price"]', '[data-testid*="price" i] input'],
   depop: ['input[name="price"]', 'input[id="price"]', 'input[autocomplete="transaction-amount"]'],
   poshmark: ['input[name="listing_price"]', '#listing_price', 'input[data-test="price"]', 'input[name="price"]'],
@@ -134,7 +133,6 @@ const PLATFORM_SELECTORS = {
 };
 
 const SAVE_LABELS = {
-  facebook: ['update', 'save', 'publish'],
   ebay: ['revise', 'list it', 'publish', 'save', 'update', 'submit'],
   depop: ['save', 'update', 'publish', 'post'],
   poshmark: ['update listing', 'save listing', 'save changes', 'update', 'save'],

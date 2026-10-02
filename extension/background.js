@@ -755,13 +755,6 @@ async function connectDepop() {
 }
 
 const PRICE_EDIT = {
-  facebook: {
-    files: ['content-facebook-edit.js', 'content-price-edit.js'],
-    urls: (id) => [
-      `https://www.facebook.com/marketplace/edit/?listing_id=${encodeURIComponent(id)}`,
-      `https://www.facebook.com/marketplace/item/${encodeURIComponent(id)}/edit`,
-    ],
-  },
   ebay: {
     files: ['content-price-edit.js'],
     urls: (id) => [
@@ -856,19 +849,6 @@ async function sendPriceUpdate(tabId, platform, price, files) {
       } catch (injectError) {
         logError('sendPriceUpdate retry inject', injectError, { tabId, platform });
       }
-    }
-  }
-
-  if (platform === 'facebook') {
-    try {
-      const response = await chrome.tabs.sendMessage(tabId, {
-        command: 'UPDATE_FACEBOOK_PRICE',
-        payload: { price },
-      });
-      if (response) return response;
-    } catch (error) {
-      lastError = error;
-      logError('sendPriceUpdate facebook fallback', error, { tabId });
     }
   }
 
@@ -967,12 +947,13 @@ async function applyFacebookPrices(listings = []) {
 }
 
 const CREATE_URLS = {
-  facebook: 'https://www.facebook.com/marketplace/create/item',
   ebay: 'https://www.ebay.com/sl/prelist/suggest',
   depop: 'https://www.depop.com/products/create/',
   poshmark: 'https://poshmark.com/create-listing',
   etsy: 'https://www.etsy.com/your/shops/me/tools/listings/create',
+  grailed: 'https://www.grailed.com/sell/new',
 };
+
 
 const SESSION_LISTERS = {
   reverb: listOnReverb,
@@ -1030,6 +1011,21 @@ async function fetchImageAsDataUrl(url, dashboardOrigin) {
   );
 }
 
+// Single choke point for photo delivery (extension image contract):
+// converts /uploads URLs, absolute URLs, and data URLs into data URLs
+// (8MB / 8s caps in fetchImageAsDataUrl). Every create path — manual or
+// automatic — must go through here; background code never fetches photos
+// itself and never hands raw URLs to a content script.
+async function prepareListingImages(listing, dashboardOrigin, trace) {
+  const images = [];
+  for (const image of (listing.images || []).slice(0, 8)) {
+    const dataUrl = await fetchImageAsDataUrl(image, dashboardOrigin);
+    if (dataUrl) images.push(dataUrl);
+  }
+  trace?.note(`Prepared ${images.length} photo(s)`);
+  return images;
+}
+
 async function createMarketplaceListings(payload = {}) {
   const platforms = Array.isArray(payload.platforms) ? payload.platforms : [];
   const listing = payload.listing || payload.item || {};
@@ -1037,11 +1033,7 @@ async function createMarketplaceListings(payload = {}) {
   const trace = createTrace('create listing');
   const results = [];
 
-  const images = [];
-  for (const image of (listing.images || []).slice(0, 8)) {
-    const dataUrl = await fetchImageAsDataUrl(image, dashboardOrigin);
-    if (dataUrl) images.push(dataUrl);
-  }
+  const images = await prepareListingImages(listing, dashboardOrigin, trace);
   const prepared = { ...listing, images };
   trace.note(
     `Listing "${prepared.title || prepared.id}" on ${platforms.join(', ') || 'no stores'} with ${images.length} photo${images.length === 1 ? '' : 's'}`
@@ -1090,7 +1082,7 @@ async function createMarketplaceListings(payload = {}) {
           await waitForTabLoad(tab.id);
           await sleep(platform === 'ebay' ? 3500 : 2200);
           try {
-            await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-create.js'] });
+            await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [platform === 'grailed' ? 'content-grailed.js' : 'content-create.js'] });
           } catch (error) {
             logError('inject create script', error, { platform });
           }
@@ -1100,7 +1092,7 @@ async function createMarketplaceListings(payload = {}) {
           for (let attempt = 0; attempt < 4; attempt += 1) {
             try {
               response = await chrome.tabs.sendMessage(tab.id, {
-                command: 'CREATE_MARKETPLACE_LISTING',
+                command: platform === 'grailed' ? 'CREATE_GRAILED_LISTING' : 'CREATE_MARKETPLACE_LISTING',
                 payload: { platform, listing: prepared },
               });
               if (response) break;
@@ -1108,7 +1100,7 @@ async function createMarketplaceListings(payload = {}) {
               lastError = error;
               await sleep(900 + attempt * 400);
               try {
-                await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-create.js'] });
+                await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [platform === 'grailed' ? 'content-grailed.js' : 'content-create.js'] });
               } catch (injectError) {
                 logError('retry inject create script', injectError, { platform });
               }
@@ -1215,7 +1207,6 @@ const EXTENSION_COMMANDS = [
   'IMPORT_ETSY',
   'CONNECT_REVERB',
   'IMPORT_REVERB',
-  'APPLY_FACEBOOK_PRICES',
   'APPLY_EBAY_PRICES',
   'APPLY_DEPOP_PRICES',
   'APPLY_POSHMARK_PRICES',
@@ -1249,8 +1240,6 @@ async function handleExtensionCommand(command, payload = {}) {
     case 'CONNECT_REVERB':
     case 'IMPORT_REVERB':
       return connectReverb();
-    case 'APPLY_FACEBOOK_PRICES':
-      return applyMarketplacePrices('facebook', payload.listings || []);
     case 'APPLY_EBAY_PRICES':
       return applyMarketplacePrices('ebay', payload.listings || []);
     case 'APPLY_DEPOP_PRICES':
@@ -1284,6 +1273,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'dashboard') return;
+  // Remember the dashboard's origin so onConnectExternal can accept it on any
+  // host/port (dev on :3001, a deployed host, etc.) without a manifest edit.
+  // This port only fires from our own content scripts/pages, so the recorded
+  // origin is one where the user installed the extension and serves the
+  // dashboard — not an arbitrary website.
+  try {
+    const senderUrl = port.sender?.tab?.url || port.sender?.url || '';
+    if (senderUrl) {
+      const origin = new URL(senderUrl).origin;
+      if (/^https?:$/.test(new URL(origin).protocol)) {
+        chrome.storage.local
+          .set({ [TRUSTED_DASHBOARD_ORIGIN_KEY]: origin })
+          .catch(() => {});
+      }
+    }
+  } catch {
+    /* origin recording is best effort */
+  }
   port.onMessage.addListener(async (message) => {
     try {
       const result = await handleExtensionCommand(message.command, message.payload || {});
@@ -1295,19 +1302,74 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
+// The dashboard may be served from localhost:3000, another dev port, or a
+// deployed host. Hardcoding origins here broke the extension bridge anywhere
+// else, so allowed origins are resolved dynamically:
+//   1. the localhost dev defaults,
+//   2. the dashboard origin recorded when the dashboard last connected via
+//      the internal port (see onConnect above),
+//   3. the manifest's externally_connectable.matches patterns (so a future
+//      manifest change takes effect without editing this file).
+const DEFAULT_EXTERNAL_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const TRUSTED_DASHBOARD_ORIGIN_KEY = 'trustedDashboardOrigin';
+
+async function getTrustedDashboardOrigin() {
+  try {
+    const stored = await chrome.storage.local.get(TRUSTED_DASHBOARD_ORIGIN_KEY);
+    const origin = stored[TRUSTED_DASHBOARD_ORIGIN_KEY];
+    return typeof origin === 'string' && origin ? origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function matchPatternAllowsOrigin(pattern, origin) {
+  try {
+    const target = new URL(origin);
+    const match = String(pattern).match(/^(\*|https?):\/\/([^/]+)\//);
+    if (!match) return false;
+    const [, scheme, host] = match;
+    if (scheme !== '*' && target.protocol.replace(/:$/, '') !== scheme) return false;
+    if (host === '*') return true;
+    if (host.startsWith('*.')) {
+      const base = host.slice(2);
+      return target.hostname === base || target.hostname.endsWith(`.${base}`);
+    }
+    return target.host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+async function isExternalOriginAllowed(origin) {
+  if (!origin) return false;
+  if (DEFAULT_EXTERNAL_ORIGINS.includes(origin)) return true;
+  const trusted = await getTrustedDashboardOrigin();
+  if (trusted && origin === trusted) return true;
+  try {
+    const patterns = chrome.runtime.getManifest()?.externally_connectable?.matches || [];
+    return patterns.some((pattern) => matchPatternAllowsOrigin(pattern, origin));
+  } catch {
+    return false;
+  }
+}
+
 chrome.runtime.onConnectExternal.addListener((port) => {
   const origin = port.sender?.origin || '';
-  if (origin !== 'http://localhost:3000' && origin !== 'http://127.0.0.1:3000') {
-    port.disconnect();
-    return;
-  }
-  port.onMessage.addListener(async (message) => {
-    try {
-      const result = await handleExtensionCommand(message.command, message.payload || {});
-      port.postMessage({ ...message, result });
-    } catch (error) {
-      logError('extension port command', error, { command: message.command });
-      port.postMessage({ ...message, error: error.message });
+  isExternalOriginAllowed(origin).then((allowed) => {
+    if (!allowed) {
+      logError('onConnectExternal blocked origin', new Error(origin || '(none)'));
+      port.disconnect();
+      return;
     }
+    port.onMessage.addListener(async (message) => {
+      try {
+        const result = await handleExtensionCommand(message.command, message.payload || {});
+        port.postMessage({ ...message, result });
+      } catch (error) {
+        logError('extension port command', error, { command: message.command });
+        port.postMessage({ ...message, error: error.message });
+      }
+    });
   });
 });

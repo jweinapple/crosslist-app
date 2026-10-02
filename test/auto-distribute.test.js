@@ -6,7 +6,7 @@
 //                      graceful missing-module handling, failure recording
 //   getAutoListStatus -> per-marketplace status read-back
 //
-// photo-intel and the two distributors are injected through
+// photo-intel and the six distributors are injected through
 // __setAutoListTestModules so no real credentials or network are involved.
 
 import assert from 'node:assert/strict';
@@ -71,6 +71,15 @@ function ctxFor(userId = 'user_1') {
   return { user: { id: userId }, baseUrl: 'http://localhost:3000' };
 }
 
+const ALL_MARKETPLACES = ['ebay', 'grailed', 'depop', 'poshmark', 'etsy', 'reverb'];
+function allDistributors(overrides = {}) {
+  const out = {};
+  for (const marketplace of ALL_MARKETPLACES) {
+    out[marketplace] = overrides[marketplace] !== undefined ? overrides[marketplace] : okDistributor(marketplace);
+  }
+  return out;
+}
+
 // activity_logs.user_id has a FK to users(id): failure recording needs real
 // user rows, so ensure them for every test user id.
 function ensureUser(userId) {
@@ -104,10 +113,7 @@ beforeEach(() => {
   autoList.__clearAutoListTestModules();
   autoList.__setAutoListTestModules({
     photoIntel: fakeIntel,
-    distributors: {
-      ebay: okDistributor('ebay'),
-      grailed: okDistributor('grailed'),
-    },
+    distributors: allDistributors(),
   });
   for (const key of Object.keys(seenPayloads)) delete seenPayloads[key];
   for (const userId of ['user_1', 'owner_a', 'owner_b', 'user_nr']) ensureUser(userId);
@@ -179,16 +185,16 @@ test('confirmAutoList distributes to both marketplaces with the uniform payload'
 
   const result = await autoList.confirmAutoList(jobId, {}, ctxFor());
   assert.equal(result.jobId, jobId);
-  assert.equal(result.statuses.length, 2);
+  assert.equal(result.statuses.length, 6);
   for (const s of result.statuses) {
     assert.equal(s.status, 'listed');
     assert.ok(s.externalId);
     assert.ok(s.url);
   }
-  assert.deepEqual(result.statuses.map((s) => s.marketplace), ['ebay', 'grailed']);
+  assert.deepEqual(result.statuses.map((s) => s.marketplace), ALL_MARKETPLACES);
 
   // Uniform distributor payload shape.
-  for (const marketplace of ['ebay', 'grailed']) {
+  for (const marketplace of ALL_MARKETPLACES) {
     const { payload, ctxUserId } = seenPayloads[marketplace];
     assert.equal(ctxUserId, 'user_1');
     assert.equal(payload.identity.brand, 'Fender');
@@ -223,12 +229,11 @@ test('confirmAutoList marks a missing distributor module as failed without crash
   // (server/grailed-distribute.js exists on disk by design; this exercises
   // the same graceful "module not available" path as a failed import).
   autoList.__setAutoListTestModules({
-    distributors: {
-      ebay: okDistributor('ebay'),
+    distributors: allDistributors({
       grailed: new Error(
         'The Grailed distributor (server/grailed-distribute.js) is not available yet: simulated missing module'
       ),
-    },
+    }),
   });
   const photo = seedPhoto();
   const { jobId } = await autoList.startAutoList([photo], ctxFor());
@@ -251,10 +256,10 @@ test('confirmAutoList marks a missing distributor module as failed without crash
 
 test('confirmAutoList records a distributor throw as a failed marketplace', async () => {
   autoList.__setAutoListTestModules({
-    distributors: {
+    distributors: allDistributors({
       ebay: async () => { throw new Error('eBay OAuth token expired'); },
       grailed: okDistributor('grailed', { status: 'pending' }),
-    },
+    }),
   });
   const photo = seedPhoto();
   const { jobId } = await autoList.startAutoList([photo], ctxFor());
@@ -268,10 +273,9 @@ test('confirmAutoList records a distributor throw as a failed marketplace', asyn
 
 test('confirmAutoList coerces an unrecognized distributor status to failed', async () => {
   autoList.__setAutoListTestModules({
-    distributors: {
+    distributors: allDistributors({
       ebay: async () => ({ ok: true, marketplace: 'ebay', status: 'teleported' }),
-      grailed: okDistributor('grailed'),
-    },
+    }),
   });
   const photo = seedPhoto();
   const { jobId } = await autoList.startAutoList([photo], ctxFor());
@@ -283,10 +287,10 @@ test('confirmAutoList coerces an unrecognized distributor status to failed', asy
 
 test('needsReview/pending/guided are first-class statuses, not failures', async () => {
   autoList.__setAutoListTestModules({
-    distributors: {
+    distributors: allDistributors({
       ebay: async () => ({ ok: true, marketplace: 'ebay', status: 'needsReview', externalId: 'eb-1' }),
       grailed: okDistributor('grailed', { status: 'guided', jobId: 'gr-ext-9' }),
-    },
+    }),
   });
   const photo = seedPhoto();
   const { jobId } = await autoList.startAutoList([photo], ctxFor('user_nr'));
@@ -306,6 +310,55 @@ test('needsReview/pending/guided are first-class statuses, not failures', async 
 
   const status = autoList.getAutoListStatus(jobId, ctxFor('user_nr'));
   assert.equal(status.statuses.find((s) => s.marketplace === 'ebay').status, 'needsReview');
+});
+
+test('recordExtensionResults applies the extension outcome to pending statuses', async () => {
+  autoList.__setAutoListTestModules({
+    distributors: allDistributors({
+      ebay: okDistributor('ebay', { status: 'pending', jobId: 'ext-eb-1', extensionTask: { platform: 'ebay' } }),
+      depop: okDistributor('depop', { status: 'pending', jobId: 'ext-dep-1' }),
+    }),
+  });
+  const photo = seedPhoto();
+  const { jobId } = await autoList.startAutoList([photo], ctxFor());
+  const confirmed = await autoList.confirmAutoList(jobId, {}, ctxFor());
+  assert.equal(confirmed.statuses.find((s) => s.marketplace === 'ebay').status, 'pending');
+  // The extension task survives normalization so the page can relay it.
+  assert.deepEqual(
+    confirmed.statuses.find((s) => s.marketplace === 'ebay').extensionTask,
+    { platform: 'ebay' }
+  );
+
+  const updated = autoList.recordExtensionResults(
+    jobId,
+    [
+      { marketplace: 'ebay', status: 'listed', externalId: 'eb-123', url: 'https://ebay.com/itm/123' },
+      { marketplace: 'depop', status: 'failed', error: 'Login expired in the helper' },
+      { marketplace: 'facebook', status: 'listed' }, // not an auto-list target: ignored
+    ],
+    ctxFor()
+  );
+  const byMarket = Object.fromEntries(updated.statuses.map((s) => [s.marketplace, s]));
+  assert.equal(byMarket.ebay.status, 'listed');
+  assert.equal(byMarket.ebay.externalId, 'eb-123');
+  assert.equal(byMarket.ebay.url, 'https://ebay.com/itm/123');
+  assert.equal(byMarket.depop.status, 'failed');
+  assert.match(byMarket.depop.error, /Login expired/);
+  assert.ok(!('facebook' in byMarket));
+
+  // A later report never downgrades a listed record.
+  const again = autoList.recordExtensionResults(
+    jobId,
+    [{ marketplace: 'ebay', status: 'failed', error: 'stale report' }],
+    ctxFor()
+  );
+  assert.equal(again.statuses.find((s) => s.marketplace === 'ebay').status, 'listed');
+
+  // Ownership + unknown-job guards match the other entry points.
+  const forbidden = catchThrow(() => autoList.recordExtensionResults(jobId, [], ctxFor('owner_b')));
+  assert.match(forbidden.message, /another account/);
+  const missing = catchThrow(() => autoList.recordExtensionResults('auto_missing', [], ctxFor()));
+  assert.match(missing.message, /not found/);
 });
 
 test('confirmAutoList is single-shot: a second confirm is rejected', async () => {
@@ -340,6 +393,8 @@ test('all entry points require a signed-in user', async () => {
   assert.match(confirmError.message, /sign in/i);
   const statusError = catchThrow(() => autoList.getAutoListStatus('auto_x', {}));
   assert.match(statusError.message, /sign in/i);
+  const resultError = catchThrow(() => autoList.recordExtensionResults('auto_x', [], {}));
+  assert.match(resultError.message, /sign in/i);
 });
 
 test('resolveAutoListPhotos maps /uploads URLs to the existing uploads dir', () => {

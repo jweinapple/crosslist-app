@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import open from 'open';
 import convertHeic from 'heic-convert';
 import * as userStore from './server/db.js';
+import { blobEnabled, sanitizeBlobFilename, contentTypeForExt, putBlobPhoto } from './server/blob-store.js';
 import { platformFailureLabel, sanitizeListingFailure, slimListingResult } from './server/listing-failures.js';
 import { initInventory, TITLE_STOPWORDS, TITLE_SIZE_WORDS, stripTitleJunk, collapseRepeatedTitle, cleanedListingTitle, normalizeTitle, titleTokens, titleSimilarity, titlesAreSameProduct, titlesLookRelated, decoratePlatformEntry, getPlatforms, listingHasPlatform, toUnifiedListing, findExistingListing, IMAGE_QUERY_DROP, normalizeImageUrl, isRealListingImage, realListingImages, extractOgImage, fetchHtml, ebayItemIdFromListing, fetchListingThumbnail, listingNeedsImageHydration, mapPool, applyListingImages, hydrateListingImages, hydrateMissingListingImages, listingImageList, listingImageKeys, listingsShareImage, listingPlatformKeys, platformsOverlap, summarizeMatchListing, findImageMatchInInventory, findImageMatchGroups, mergeInventoryListings, pickPrimaryListing, mergeObviousDuplicateListings, cleanStoredListingTitles, upsertImportedListing, seedDemoInventory, seedDemoEbayListings, seedDemoFacebookListings, buildMarketplaceCandidates, buildDepopMarketplaceCandidates, buildPoshmarkMarketplaceCandidates, buildEtsyMarketplaceCandidates, buildReverbMarketplaceCandidates, annotateImportCandidates, applyMoneyDivisor, parseListingPrice } from './server/inventory.js';
 import * as autoList from './server/auto-distribute.js';
@@ -64,7 +65,10 @@ initInventory({ logError, getCurrentUser, listings });
 
 function persistStore() {
   const user = requestContext.getStore()?.user;
-  if (user) userStore.saveUser(user);
+  if (!user) return Promise.resolve();
+  // saveUser is async now; persist in the background and log failures —
+  // callers fire-and-forget, the SIGINT handler awaits.
+  return userStore.saveUser(user).catch((error) => logError('Persist user store', error));
 }
 
 function getCurrentUser() {
@@ -100,34 +104,38 @@ function requirePageLogin(req, res) {
   return false;
 }
 
-function beginOAuth(req, res, platform, extra = {}) {
+async function beginOAuth(req, res, platform, extra = {}) {
   if (!requirePageLogin(req, res)) return null;
   return userStore.issueOAuthState(req.user.id, platform, extra);
 }
 
-function userFromOAuthState(state) {
-  const oauth = userStore.consumeOAuthState(state);
+async function userFromOAuthState(state) {
+  const oauth = await userStore.consumeOAuthState(state);
   if (!oauth) return null;
-  return { oauth, user: userStore.loadUser(oauth.userId) };
+  return { oauth, user: await userStore.loadUser(oauth.userId) };
 }
 
-app.use((req, res, next) => {
-  const cookies = userStore.parseCookies(req);
-  const sid = cookies[userStore.SESSION_COOKIE];
-  let session = userStore.getSession(sid);
-  let user = session ? userStore.loadUser(session.user_id) : null;
-  if (!user) {
-    user = userStore.restoreUserFromIdentityCookie(cookies);
-    if (user) {
-      const sessionId = userStore.createSession(user.id);
-      session = { id: sessionId, user_id: user.id };
-      userStore.setSessionCookie(res, sessionId, user);
+app.use(async (req, res, next) => {
+  try {
+    const cookies = userStore.parseCookies(req);
+    const sid = cookies[userStore.SESSION_COOKIE];
+    let session = await userStore.getSession(sid);
+    let user = session ? await userStore.loadUser(session.user_id) : null;
+    if (!user) {
+      user = await userStore.restoreUserFromIdentityCookie(cookies);
+      if (user) {
+        const sessionId = await userStore.createSession(user.id);
+        session = { id: sessionId, user_id: user.id };
+        await userStore.setSessionCookie(res, sessionId, user);
+      }
     }
+    req.user = user;
+    req.sessionId = session?.id || null;
+    const listingsMap = user ? await userStore.listingMapFor(user.id) : new Map();
+    requestContext.run({ user, listings: listingsMap }, next);
+  } catch (error) {
+    next(error);
   }
-  req.user = user;
-  req.sessionId = session?.id || null;
-  const listingsMap = user ? userStore.listingMapFor(user.id) : new Map();
-  requestContext.run({ user, listings: listingsMap }, next);
 });
 
 app.use((req, res, next) => {
@@ -165,16 +173,18 @@ function redactValue(key, value, depth = 0) {
 function recordActivity(type, message, detail, req = null) {
   const user = req?.user || getCurrentUser();
   if (!user?.id || !message) return;
-  try {
-    userStore.appendActivity(user.id, {
+  // appendActivity is async now; record in the background — callers keep the
+  // old fire-and-forget shape and failures only warn.
+  userStore
+    .appendActivity(user.id, {
       type,
       source: detail?.source || 'server',
       message,
       detail,
+    })
+    .catch((error) => {
+      console.warn('Failed to record activity:', error.message);
     });
-  } catch (error) {
-    console.warn('Failed to record activity:', error.message);
-  }
 }
 
 function isListingFailure(result) {
@@ -185,12 +195,12 @@ function isListingFailure(result) {
   return Boolean(result?.error);
 }
 
-function recordListingFailure(raw, req) {
+async function recordListingFailure(raw, req) {
   const failure = sanitizeListingFailure(raw);
   if (!failure) return { dropped: typeof raw?.id === 'string' ? raw.id : null };
   const user = req?.user || getCurrentUser();
   if (!user?.id) return { dropped: failure.id };
-  if (failure.id && userStore.hasListingFailure(user.id, failure.id)) return { id: failure.id };
+  if (failure.id && (await userStore.hasListingFailure(user.id, failure.id))) return { id: failure.id };
   const label = failure.title ? `"${failure.title}"` : 'an item';
   const where = failure.step ? ` while ${failure.step}` : '';
   recordActivity(
@@ -563,8 +573,8 @@ app.post('/api/auth/signup', async (req, res) => {
       password: req.body?.password,
       name: req.body?.name,
     });
-    const sessionId = userStore.createSession(user.id);
-    userStore.setSessionCookie(res, sessionId, user);
+    const sessionId = await userStore.createSession(user.id);
+    await userStore.setSessionCookie(res, sessionId, user);
     return res.status(201).json({
       authenticated: true,
       user: { id: user.id, email: user.email, name: user.name || '' },
@@ -587,8 +597,8 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const user = await userStore.authenticateUser(req.body?.email, req.body?.password);
     rateBuckets.delete(`login-email:${emailKey}`);
-    const sessionId = userStore.createSession(user.id);
-    userStore.setSessionCookie(res, sessionId, user);
+    const sessionId = await userStore.createSession(user.id);
+    await userStore.setSessionCookie(res, sessionId, user);
     return res.json({
       authenticated: true,
       user: { id: user.id, email: user.email, name: user.name || '' },
@@ -599,19 +609,19 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/logout', (req, res) => {
-  userStore.deleteSession(req.sessionId);
+app.post('/api/auth/logout', async (req, res) => {
+  await userStore.deleteSession(req.sessionId);
   userStore.clearSessionCookie(res);
   return res.json({ authenticated: false });
 });
 
 const GOOGLE_STATE_COOKIE = 'crosslist_google_state';
 
-app.get('/api/auth/google', (req, res) => {
+app.get('/api/auth/google', async (req, res) => {
   if (!googleLiveMode) {
     return res.redirect('/dashboard.html?authError=google-config');
   }
-  const state = userStore.issueOAuthState('', 'google');
+  const state = await userStore.issueOAuthState('', 'google');
   // Bind the flow to this browser so a callback URL can't be replayed in someone else's.
   res.append('Set-Cookie', `${GOOGLE_STATE_COOKIE}=${state}; ${userStore.cookieSecurity()}; Max-Age=600`);
   const authUrl =
@@ -634,7 +644,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
   }
   const stateCookie = userStore.parseCookies(req)[GOOGLE_STATE_COOKIE];
   res.append('Set-Cookie', `${GOOGLE_STATE_COOKIE}=; ${userStore.cookieSecurity()}; Max-Age=0`);
-  const oauth = userStore.consumeOAuthState(String(state || ''));
+  const oauth = await userStore.consumeOAuthState(String(state || ''));
   if (!oauth || oauth.platform !== 'google' || !stateCookie || stateCookie !== String(state)) {
     return res.redirect('/dashboard.html?authError=google');
   }
@@ -665,13 +675,13 @@ app.get('/api/auth/google/callback', async (req, res) => {
       return res.redirect('/dashboard.html?authError=google');
     }
 
-    const { user, created } = userStore.findOrCreateGoogleUser({
+    const { user, created } = await userStore.findOrCreateGoogleUser({
       googleId: profile.sub,
       email: profile.email,
       name: profile.name || profile.given_name || '',
     });
-    const sessionId = userStore.createSession(user.id);
-    userStore.setSessionCookie(res, sessionId, user);
+    const sessionId = await userStore.createSession(user.id);
+    await userStore.setSessionCookie(res, sessionId, user);
     return res.redirect(created ? '/dashboard.html?googleSignup=1' : '/dashboard.html');
   } catch (oauthError) {
     logError('Google OAuth', oauthError, { req });
@@ -803,14 +813,28 @@ async function persistListingImage(userId, image) {
   if (!match) return '';
   let buffer = Buffer.from(match[2], 'base64');
   if (!buffer.length || buffer.length > 10 * 1024 * 1024) return '';
+  let stored;
   try {
-    const stored = await toStoredImage(buffer, match[1]);
-    buffer = stored.buffer;
-    const owner = safeUserId(userId);
+    stored = await toStoredImage(buffer, match[1]);
+  } catch {
+    return '';
+  }
+  const owner = safeUserId(userId);
+  const name = `${uuidv4()}.${stored.ext}`;
+  if (blobEnabled()) {
+    // Vercel Blob mode: failures propagate so a misconfigured store fails
+    // loudly instead of silently dropping the image.
+    return putBlobPhoto({
+      owner,
+      name,
+      buffer: stored.buffer,
+      contentType: contentTypeForExt(stored.ext),
+    });
+  }
+  try {
     const dir = path.join(UPLOADS_DIR, owner);
     fs.mkdirSync(dir, { recursive: true });
-    const name = `${uuidv4()}.${stored.ext}`;
-    fs.writeFileSync(path.join(dir, name), buffer);
+    fs.writeFileSync(path.join(dir, name), stored.buffer);
     return `/uploads/${owner}/${name}`;
   } catch {
     return '';
@@ -1351,8 +1375,8 @@ app.get('/api/auth/ebay', (req, res) => {
   return res.redirect('/api/auth/ebay/live');
 });
 
-app.get('/api/auth/ebay/live', (req, res) => {
-  const state = beginOAuth(req, res, 'ebay');
+app.get('/api/auth/ebay/live', async (req, res) => {
+  const state = await beginOAuth(req, res, 'ebay');
   if (!state) return;
   const authUrl = `${getEbayAuthBase()}/oauth2/authorize?` +
     new URLSearchParams({
@@ -1375,7 +1399,7 @@ app.get('/api/auth/ebay/callback', async (req, res) => {
     return res.status(400).send('Authorization code not provided');
   }
 
-  const oauthResult = userFromOAuthState(String(state || ''));
+  const oauthResult = await userFromOAuthState(String(state || ''));
   if (!oauthResult?.user) {
     return res.redirect('/dashboard.html?oauthError=ebay#marketplaces');
   }
@@ -1407,8 +1431,8 @@ app.get('/api/auth/ebay/callback', async (req, res) => {
       ebayExtension: false,
       ebayAccount: 'ebay-oauth',
     });
-    userStore.saveUser(userData);
-    
+    await userStore.saveUser(userData);
+
     res.redirect('/dashboard.html?connected=ebay#marketplaces');
   } catch (error) {
     logError('eBay OAuth', error, { req });
@@ -1457,9 +1481,9 @@ app.get('/api/auth/depop', (req, res) => {
   return res.redirect('/api/auth/depop/live');
 });
 
-app.get('/api/auth/depop/live', (req, res) => {
+app.get('/api/auth/depop/live', async (req, res) => {
   const pkce = createPkce();
-  const state = beginOAuth(req, res, 'depop', { verifier: pkce.verifier });
+  const state = await beginOAuth(req, res, 'depop', { verifier: pkce.verifier });
   if (!state) return;
   const authUrl = `${getDepopAuthUrl()}?` +
     new URLSearchParams({
@@ -1480,7 +1504,7 @@ app.get('/api/auth/depop/callback', async (req, res) => {
     return res.redirect('/dashboard.html?oauthError=depop#marketplaces');
   }
 
-  const oauthResult = userFromOAuthState(String(state || ''));
+  const oauthResult = await userFromOAuthState(String(state || ''));
   if (!oauthResult?.user) {
     return res.redirect('/dashboard.html?oauthError=depop#marketplaces');
   }
@@ -1513,7 +1537,7 @@ app.get('/api/auth/depop/callback', async (req, res) => {
       depopExtension: false,
       depopAccount: 'depop-oauth',
     });
-    userStore.saveUser(userData);
+    await userStore.saveUser(userData);
 
     res.redirect('/dashboard.html?connected=depop#marketplaces');
   } catch (depopError) {
@@ -1616,12 +1640,12 @@ app.get('/api/auth/etsy', (req, res) => {
   return res.redirect('/api/auth/etsy/live');
 });
 
-app.get('/api/auth/etsy/live', (req, res) => {
+app.get('/api/auth/etsy/live', async (req, res) => {
   if (!etsyLiveMode) {
     return res.redirect('/dashboard.html?oauthError=etsy#marketplaces');
   }
   const pkce = createPkce();
-  const state = beginOAuth(req, res, 'etsy', { verifier: pkce.verifier });
+  const state = await beginOAuth(req, res, 'etsy', { verifier: pkce.verifier });
   if (!state) return;
   const authUrl =
     'https://www.etsy.com/oauth/connect?' +
@@ -1643,7 +1667,7 @@ app.get('/api/auth/etsy/callback', async (req, res) => {
     return res.redirect('/dashboard.html?oauthError=etsy#marketplaces');
   }
 
-  const oauthResult = userFromOAuthState(String(state || ''));
+  const oauthResult = await userFromOAuthState(String(state || ''));
   if (!oauthResult?.user) {
     return res.redirect('/dashboard.html?oauthError=etsy#marketplaces');
   }
@@ -1700,7 +1724,7 @@ app.get('/api/auth/etsy/callback', async (req, res) => {
       etsyUserId: userId,
       etsyShopId: shopId,
     });
-    userStore.saveUser(userData);
+    await userStore.saveUser(userData);
 
     res.redirect('/dashboard.html?connected=etsy#marketplaces');
   } catch (oauthError) {
@@ -1845,7 +1869,7 @@ app.post('/api/auth/reverb/connect', async (req, res) => {
       reverbTokenExpires: null,
       reverbRefreshToken: null,
     });
-    userStore.saveUser(user);
+    await userStore.saveUser(user);
 
     recordActivity('success', `Connected Reverb account: ${validation.account}`, {
       source: 'server',
@@ -2136,7 +2160,7 @@ app.post('/api/listings/import', async (req, res) => {
     skipped: skipped.length,
     listings: saved.map((listing) => toUnifiedListing(listings.get(listing.id) || listing)),
     skippedListings: skipped,
-    imageMatches: findImageMatchGroups(),
+    imageMatches: await findImageMatchGroups(),
   });
 });
 
@@ -2174,17 +2198,17 @@ app.get('/api/listings', async (_req, res) => {
   }
 });
 
-app.get('/api/listings/image-matches', (req, res) => {
+app.get('/api/listings/image-matches', async (req, res) => {
   getDemoUser();
   mergeObviousDuplicateListings();
   cleanStoredListingTitles();
   return res.json({
-    groups: findImageMatchGroups(),
-    dismissedPairKeys: userStore.listImageMatchDismissals(getCurrentUser()?.id),
+    groups: await findImageMatchGroups(),
+    dismissedPairKeys: await userStore.listImageMatchDismissals(getCurrentUser()?.id),
   });
 });
 
-app.post('/api/listings/image-matches/resolve', (req, res) => {
+app.post('/api/listings/image-matches/resolve', async (req, res) => {
   try {
     const user = getDemoUser();
     const { primaryId, matchIds = [], decision } = req.body || {};
@@ -2204,10 +2228,10 @@ app.post('/api/listings/image-matches/resolve', (req, res) => {
           pairKeys.push(userStore.imageMatchPairKey(groupIds[i], groupIds[j]));
         }
       }
-      userStore.dismissImageMatchPairs(user.id, pairKeys);
+      await userStore.dismissImageMatchPairs(user.id, pairKeys);
       return res.json({
         decision: 'dismiss',
-        groups: findImageMatchGroups(),
+        groups: await findImageMatchGroups(),
       });
     }
 
@@ -2221,7 +2245,7 @@ app.post('/api/listings/image-matches/resolve', (req, res) => {
       decision: 'merge',
       listing: toUnifiedListing(result.listing),
       mergedIds: result.mergedIds,
-      groups: findImageMatchGroups(),
+      groups: await findImageMatchGroups(),
     });
   } catch (error) {
     logError('Image match resolve', error, { req });
@@ -2325,6 +2349,21 @@ app.post(
     try {
       const stored = await toStoredImage(body, mime, filename);
       const owner = safeUserId(user.id);
+      if (blobEnabled()) {
+        // Vercel Blob mode: store remotely and return the absolute public URL.
+        const leaf = `${uuidv4()}-${sanitizeBlobFilename(filename, stored.ext)}`;
+        try {
+          const url = await putBlobPhoto({
+            owner,
+            name: leaf,
+            buffer: stored.buffer,
+            contentType: contentTypeForExt(stored.ext),
+          });
+          return res.status(201).json({ url, filename: leaf });
+        } catch (error) {
+          return res.status(502).json({ error: `Photo upload failed: ${error?.message || 'storage unavailable'}` });
+        }
+      }
       const dir = path.join(UPLOADS_DIR, owner);
       fs.mkdirSync(dir, { recursive: true });
       const name = `${uuidv4()}.${stored.ext}`;
@@ -2371,7 +2410,7 @@ app.post('/api/auto-list/:jobId/extension-result', async (req, res) => {
   try {
     const user = getDemoUser();
     const results = Array.isArray(req.body?.results) ? req.body.results : [];
-    const result = autoList.recordExtensionResults(req.params.jobId, results, {
+    const result = await autoList.recordExtensionResults(req.params.jobId, results, {
       user,
       baseUrl: requestOrigin(req),
     });
@@ -2384,7 +2423,7 @@ app.post('/api/auto-list/:jobId/extension-result', async (req, res) => {
 app.get('/api/auto-list/:jobId/status', async (req, res) => {
   try {
     const user = getDemoUser();
-    const result = autoList.getAutoListStatus(req.params.jobId, { user, baseUrl: requestOrigin(req) });
+    const result = await autoList.getAutoListStatus(req.params.jobId, { user, baseUrl: requestOrigin(req) });
     return res.json(result);
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'Could not load auto-list status' });
@@ -2480,7 +2519,7 @@ app.post('/api/listings/:id/push', async (req, res) => {
   }
 });
 
-app.post('/api/listings/:id/listed', (req, res) => {
+app.post('/api/listings/:id/listed', async (req, res) => {
   const listing = listings.get(req.params.id);
   if (!listing) return res.status(404).json({ error: 'Listing not found' });
 
@@ -2494,7 +2533,7 @@ app.post('/api/listings/:id/listed', (req, res) => {
     next = applyPlatformResult(next, platform, result);
     if (!isListingFailure(result)) continue;
     const failure = result.failure && typeof result.failure === 'object' ? result.failure : {};
-    recordListingFailure({
+    await recordListingFailure({
       ...failure,
       listingId: failure.listingId || next.id,
       title: failure.title || next.title,
@@ -2514,13 +2553,13 @@ app.post('/api/listings/:id/listed', (req, res) => {
   return res.json({ listing: next });
 });
 
-app.post('/api/listing-failures', (req, res) => {
+app.post('/api/listing-failures', async (req, res) => {
   const incoming = Array.isArray(req.body?.failures) ? req.body.failures.slice(0, 20) : [];
   req.body = { count: incoming.length };
   const saved = [];
   const dropped = [];
   for (const raw of incoming) {
-    const outcome = recordListingFailure(raw, req);
+    const outcome = await recordListingFailure(raw, req);
     if (outcome.id) saved.push(outcome.id);
     else if (outcome.dropped) dropped.push(outcome.dropped);
   }
@@ -2845,11 +2884,11 @@ if (!process.env.VERCEL) {
     }
   });
 
-  process.on('SIGINT', () => {
+  process.on('SIGINT', async () => {
     console.log('Shutting down server...');
     try {
-      persistStore();
-      userStore.db.close();
+      await persistStore();
+      await userStore.db.close();
     } catch (error) {
       logError('Persist session on shutdown', error);
     }

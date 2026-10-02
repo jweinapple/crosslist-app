@@ -6,10 +6,12 @@
 //                                       product + a market price from sold
 //                                       comps via server/photo-intel.js
 //   confirmAutoList(jobId, {identity, price}, ctx)
-//                                    -> distributes to eBay + Facebook
-//                                       Marketplace + Grailed via the uniform
-//                                       distributor interface, records
-//                                       per-marketplace status
+//                                    -> distributes to eBay + Grailed via
+//                                       the uniform distributor interface,
+//                                       records per-marketplace status
+//                                    (Facebook Marketplace posting is NOT
+//                                     handled by the app — the user posts
+//                                     through Muse chat instead.)
 //   getAutoListStatus(jobId, ctx)    -> per-marketplace status
 //
 // Distributor contract (implemented by sibling workers):
@@ -33,7 +35,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, DATA_DIR, appendActivity, hasListingFailure } from './db.js';
 import { sanitizeListingFailure, platformFailureLabel } from './listing-failures.js';
 
-export const AUTO_LIST_MARKETPLACES = ['ebay', 'facebook', 'grailed'];
+export const AUTO_LIST_MARKETPLACES = ['ebay', 'grailed'];
 // First-class statuses. 'pending' | 'guided' | 'needsReview' are NOT failures:
 // they render as their own states in the progress UI. Only 'failed' is
 // recorded through server/listing-failures.js.
@@ -42,13 +44,11 @@ const UPLOADS_PREFIX = '/uploads/';
 
 const DISTRIBUTOR_MODULES = {
   ebay: './ebay-auto.js',
-  facebook: './facebook-distribute.js',
   grailed: './grailed-distribute.js',
 };
 
 const MARKETPLACE_LABELS = {
   ebay: 'eBay',
-  facebook: 'Facebook Marketplace',
   grailed: 'Grailed',
 };
 
@@ -154,7 +154,7 @@ function updateJobRow(jobId, patch) {
 
 const testOverrides = {
   photoIntel: null,
-  distributors: { ebay: null, facebook: null, grailed: null },
+  distributors: { ebay: null, grailed: null },
 };
 
 /** @internal — test only */
@@ -508,7 +508,7 @@ function buildDistributorPayload(finalIdentity, finalPrice, job) {
 
 // Sibling distributors were written against ctx shapes like
 // { userId, dashboardOrigin, extensionAvailable } — pass those through
-// alongside our own ctx so the uniform call works for all three.
+// alongside our own ctx so the uniform call works for both distributors.
 function buildDistributorCtx(ctx = {}) {
   return {
     ...ctx,

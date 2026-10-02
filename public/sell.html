@@ -183,7 +183,7 @@
       <div class="steps3">
         <div class="step"><div class="n">1</div><h3>Snap photos</h3><p>Add one or more photos of your item. That's the only thing you have to provide.</p></div>
         <div class="step"><div class="n">2</div><h3>Confirm what we found</h3><p>We identify the exact product and suggest a price from recent sold listings. You correct anything that's off — on one screen.</p></div>
-        <div class="step"><div class="n">3</div><h3>We list it everywhere</h3><p>One tap lists it on eBay, Facebook Marketplace, and Grailed. You watch each one go live.</p></div>
+        <div class="step"><div class="n">3</div><h3>We list it everywhere</h3><p>One tap lists it on eBay and Grailed. You watch each one go live. Facebook Marketplace posting is handled via Muse chat.</p></div>
       </div>
     </div>
   </section>
@@ -200,7 +200,6 @@
 
   var MARKETS = [
     { id: 'ebay', label: 'eBay', initial: 'e' },
-    { id: 'facebook', label: 'Facebook Marketplace', initial: 'f' },
     { id: 'grailed', label: 'Grailed', initial: 'G' }
   ];
 
@@ -537,79 +536,12 @@
       '<div class="dist-head"><h2>' + (done ? (listed ? 'It\'s live!' : 'Distribution finished') : 'Listing everywhere…') + '</h2>' +
       '<p>' + esc(displayName(state.identity)) + ' · ' + money(state.price) + '</p></div>' +
       '<div class="mkts">' + cards + '</div>' +
+      '<div class="fine">Facebook Marketplace isn\u2019t posted by the app \u2014 ask Muse in chat and it\u2019ll list it for you.</div>' +
       (done ? '<div class="actions"><button class="go ghost" id="another" type="button">List another item</button> ' +
         '<a class="go" href="/dashboard.html#items" style="text-decoration:none">See my items</a></div>'
         : '<div class="fine">Posting to each marketplace — this usually takes under a minute.</div>');
     var another = document.getElementById('another');
     if (another) another.addEventListener('click', resetAll);
-  }
-
-  /* -------- Facebook extension relay --------
-     Facebook has no listing API: the server queues distribution jobs and this
-     page relays them to the Crosslist Connector Chrome extension, which fills
-     in and publishes the listing in the user's logged-in Facebook session.
-     Runs while the distribution screen is open and Facebook is still queued. */
-  var fbRelaying = false;
-  function hasExtBridge() {
-    return Boolean(document.documentElement.dataset.crosslistExtensionId);
-  }
-  function extRequest(command, payload) {
-    return new Promise(function (resolve, reject) {
-      if (!hasExtBridge()) { reject(new Error('extension-missing')); return; }
-      var requestId = 'fb-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
-      var timer = setTimeout(function () {
-        window.removeEventListener('message', handler);
-        reject(new Error('extension-timeout'));
-      }, 120000);
-      function handler(event) {
-        if (event.origin !== window.location.origin) return;
-        var d = event.data;
-        if (!d || d.type !== 'CROSSLIST_EXT_RESPONSE' || d.requestId !== requestId) return;
-        clearTimeout(timer);
-        window.removeEventListener('message', handler);
-        if (d.response && d.response.error) reject(new Error(String(d.response.error)));
-        else resolve(d.response || {});
-      }
-      window.addEventListener('message', handler);
-      window.postMessage({ type: 'CROSSLIST_EXT_REQUEST', requestId: requestId, command: command, payload: payload }, window.location.origin);
-    });
-  }
-  function fbApi(path, options) {
-    return fetch(path, options).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (data) {
-        if (!res.ok) throw new Error((data && data.error) || ('Request failed: ' + res.status));
-        return data;
-      });
-    });
-  }
-  function fbRelayCycle() {
-    if (fbRelaying || state.screen !== 'distributing') return;
-    var fb = statusFor('facebook');
-    if (!fb || fb.status !== 'pending') return;
-    fbRelaying = true;
-    fbApi('/api/facebook/jobs/pending').then(function (data) {
-      var jobs = (data && data.jobs) || [];
-      var chain = Promise.resolve();
-      jobs.forEach(function (job) {
-        chain = chain.then(function () {
-          var jobId = job.jobId || job.id;
-          return fbApi('/api/facebook/jobs/claim', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jobId: jobId })
-          }).then(function (claimed) {
-            var fullJob = (claimed && claimed.job) || job;
-            return extRequest('CREATE_FACEBOOK_LISTING', { job: fullJob, dashboardOrigin: window.location.origin })
-              .catch(function (err) { return { success: false, error: String((err && err.message) || err) }; });
-          }).then(function (result) {
-            return fbApi('/api/facebook/jobs/result', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jobId: jobId, result: result || {} })
-            }).catch(function () {});
-          }).catch(function () {});
-        });
-      });
-      return chain;
-    }).catch(function () {}).then(function () { fbRelaying = false; });
   }
 
   function pollStatus() {
@@ -623,7 +555,6 @@
           state.statuses = data.statuses;
           renderDistributing();
         }
-        fbRelayCycle(); // relay any queued Facebook jobs through the Chrome helper
         var done = state.statuses.length === MARKETS.length &&
           state.statuses.every(function (s) { return s.status; });
         if (!done) setTimeout(pollStatus, 2500);

@@ -6,7 +6,7 @@
 //                      graceful missing-module handling, failure recording
 //   getAutoListStatus -> per-marketplace status read-back
 //
-// photo-intel and the three distributors are injected through
+// photo-intel and the two distributors are injected through
 // __setAutoListTestModules so no real credentials or network are involved.
 
 import assert from 'node:assert/strict';
@@ -106,7 +106,6 @@ beforeEach(() => {
     photoIntel: fakeIntel,
     distributors: {
       ebay: okDistributor('ebay'),
-      facebook: okDistributor('facebook'),
       grailed: okDistributor('grailed'),
     },
   });
@@ -174,22 +173,22 @@ test('startAutoList marks the job failed when photo-intel throws', async () => {
   assert.equal(status.stage, 'failed');
 });
 
-test('confirmAutoList distributes to all three marketplaces with the uniform payload', async () => {
+test('confirmAutoList distributes to both marketplaces with the uniform payload', async () => {
   const photo = seedPhoto();
   const { jobId } = await autoList.startAutoList([photo], ctxFor());
 
   const result = await autoList.confirmAutoList(jobId, {}, ctxFor());
   assert.equal(result.jobId, jobId);
-  assert.equal(result.statuses.length, 3);
+  assert.equal(result.statuses.length, 2);
   for (const s of result.statuses) {
     assert.equal(s.status, 'listed');
     assert.ok(s.externalId);
     assert.ok(s.url);
   }
-  assert.deepEqual(result.statuses.map((s) => s.marketplace), ['ebay', 'facebook', 'grailed']);
+  assert.deepEqual(result.statuses.map((s) => s.marketplace), ['ebay', 'grailed']);
 
   // Uniform distributor payload shape.
-  for (const marketplace of ['ebay', 'facebook', 'grailed']) {
+  for (const marketplace of ['ebay', 'grailed']) {
     const { payload, ctxUserId } = seenPayloads[marketplace];
     assert.equal(ctxUserId, 'user_1');
     assert.equal(payload.identity.brand, 'Fender');
@@ -226,7 +225,6 @@ test('confirmAutoList marks a missing distributor module as failed without crash
   autoList.__setAutoListTestModules({
     distributors: {
       ebay: okDistributor('ebay'),
-      facebook: okDistributor('facebook'),
       grailed: new Error(
         'The Grailed distributor (server/grailed-distribute.js) is not available yet: simulated missing module'
       ),
@@ -255,7 +253,6 @@ test('confirmAutoList records a distributor throw as a failed marketplace', asyn
   autoList.__setAutoListTestModules({
     distributors: {
       ebay: async () => { throw new Error('eBay OAuth token expired'); },
-      facebook: okDistributor('facebook', { status: 'guided', jobId: 'fb-ext-9' }),
       grailed: okDistributor('grailed', { status: 'pending' }),
     },
   });
@@ -266,8 +263,6 @@ test('confirmAutoList records a distributor throw as a failed marketplace', asyn
   const byMarket = Object.fromEntries(result.statuses.map((s) => [s.marketplace, s]));
   assert.equal(byMarket.ebay.status, 'failed');
   assert.match(byMarket.ebay.error, /token expired/);
-  assert.equal(byMarket.facebook.status, 'guided');
-  assert.equal(byMarket.facebook.jobId, 'fb-ext-9');
   assert.equal(byMarket.grailed.status, 'pending');
 });
 
@@ -275,7 +270,6 @@ test('confirmAutoList coerces an unrecognized distributor status to failed', asy
   autoList.__setAutoListTestModules({
     distributors: {
       ebay: async () => ({ ok: true, marketplace: 'ebay', status: 'teleported' }),
-      facebook: okDistributor('facebook'),
       grailed: okDistributor('grailed'),
     },
   });
@@ -291,8 +285,7 @@ test('needsReview/pending/guided are first-class statuses, not failures', async 
   autoList.__setAutoListTestModules({
     distributors: {
       ebay: async () => ({ ok: true, marketplace: 'ebay', status: 'needsReview', externalId: 'eb-1' }),
-      facebook: okDistributor('facebook', { status: 'guided', jobId: 'fb-ext-9' }),
-      grailed: okDistributor('grailed', { status: 'pending' }),
+      grailed: okDistributor('grailed', { status: 'guided', jobId: 'gr-ext-9' }),
     },
   });
   const photo = seedPhoto();
@@ -302,8 +295,7 @@ test('needsReview/pending/guided are first-class statuses, not failures', async 
   const byMarket = Object.fromEntries(result.statuses.map((s) => [s.marketplace, s]));
   assert.equal(byMarket.ebay.status, 'needsReview');
   assert.equal(byMarket.ebay.error, null);
-  assert.equal(byMarket.facebook.status, 'guided');
-  assert.equal(byMarket.grailed.status, 'pending');
+  assert.equal(byMarket.grailed.status, 'guided');
 
   // Nothing recorded through the listing-failures pipeline for these.
   const activity = userStore.listActivity('user_nr', 50);

@@ -755,13 +755,6 @@ async function connectDepop() {
 }
 
 const PRICE_EDIT = {
-  facebook: {
-    files: ['content-facebook-edit.js', 'content-price-edit.js'],
-    urls: (id) => [
-      `https://www.facebook.com/marketplace/edit/?listing_id=${encodeURIComponent(id)}`,
-      `https://www.facebook.com/marketplace/item/${encodeURIComponent(id)}/edit`,
-    ],
-  },
   ebay: {
     files: ['content-price-edit.js'],
     urls: (id) => [
@@ -856,19 +849,6 @@ async function sendPriceUpdate(tabId, platform, price, files) {
       } catch (injectError) {
         logError('sendPriceUpdate retry inject', injectError, { tabId, platform });
       }
-    }
-  }
-
-  if (platform === 'facebook') {
-    try {
-      const response = await chrome.tabs.sendMessage(tabId, {
-        command: 'UPDATE_FACEBOOK_PRICE',
-        payload: { price },
-      });
-      if (response) return response;
-    } catch (error) {
-      lastError = error;
-      logError('sendPriceUpdate facebook fallback', error, { tabId });
     }
   }
 
@@ -1227,7 +1207,6 @@ const EXTENSION_COMMANDS = [
   'IMPORT_ETSY',
   'CONNECT_REVERB',
   'IMPORT_REVERB',
-  'APPLY_FACEBOOK_PRICES',
   'APPLY_EBAY_PRICES',
   'APPLY_DEPOP_PRICES',
   'APPLY_POSHMARK_PRICES',
@@ -1261,8 +1240,6 @@ async function handleExtensionCommand(command, payload = {}) {
     case 'CONNECT_REVERB':
     case 'IMPORT_REVERB':
       return connectReverb();
-    case 'APPLY_FACEBOOK_PRICES':
-      return applyMarketplacePrices('facebook', payload.listings || []);
     case 'APPLY_EBAY_PRICES':
       return applyMarketplacePrices('ebay', payload.listings || []);
     case 'APPLY_DEPOP_PRICES':

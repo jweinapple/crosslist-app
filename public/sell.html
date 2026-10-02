@@ -183,7 +183,7 @@
       <div class="steps3">
         <div class="step"><div class="n">1</div><h3>Snap photos</h3><p>Add one or more photos of your item. That's the only thing you have to provide.</p></div>
         <div class="step"><div class="n">2</div><h3>Confirm what we found</h3><p>We identify the exact product and suggest a price from recent sold listings. You correct anything that's off — on one screen.</p></div>
-        <div class="step"><div class="n">3</div><h3>We list it everywhere</h3><p>One tap lists it on eBay and Grailed. You watch each one go live. Facebook Marketplace posting is handled via Muse chat.</p></div>
+        <div class="step"><div class="n">3</div><h3>We list it everywhere</h3><p>One tap hands it to the Crosslist Connector Chrome extension, which lists it on eBay, Grailed, Depop, Poshmark, Etsy, and Reverb from your logged-in browser sessions. You watch each one go live. Facebook Marketplace posting is handled via Muse chat.</p></div>
       </div>
     </div>
   </section>
@@ -200,8 +200,18 @@
 
   var MARKETS = [
     { id: 'ebay', label: 'eBay', initial: 'e' },
-    { id: 'grailed', label: 'Grailed', initial: 'G' }
+    { id: 'grailed', label: 'Grailed', initial: 'G' },
+    { id: 'depop', label: 'Depop', initial: 'd' },
+    { id: 'poshmark', label: 'Poshmark', initial: 'P' },
+    { id: 'etsy', label: 'Etsy', initial: 'E' },
+    { id: 'reverb', label: 'Reverb', initial: 'R' }
   ];
+
+  // What the Chrome helper needs at distribution time. Shown verbatim when
+  // the extension isn't reachable so the requirement is never a mystery.
+  var EXTENSION_REQUIREMENTS =
+    'Listing runs through the Crosslist Connector Chrome extension: install it in Google Chrome, ' +
+    'log into each store in that Chrome profile, and keep this page open while it works.';
 
   var state = {
     screen: 'photos', // photos | analyzing | confirm | distributing
@@ -216,8 +226,72 @@
     confidence: null,
     statuses: [],
     error: null,
-    polls: 0
+    polls: 0,
+    relaying: false   // an extension relay is currently in flight
   };
+
+  /* ---------------- Chrome extension bridge (same protocol as the dashboard) -- */
+
+  function hasExtensionBridge() {
+    return Boolean(document.documentElement.dataset.crosslistExtensionId);
+  }
+
+  function versionAtLeast(version, min) {
+    var parse = function (value) { return String(value || '0').split('.').map(function (part) { return Number(part) || 0; }); };
+    var a = parse(version), b = parse(min);
+    for (var i = 0; i < Math.max(a.length, b.length); i++) {
+      var delta = (a[i] || 0) - (b[i] || 0);
+      if (delta !== 0) return delta > 0;
+    }
+    return true;
+  }
+
+  function extensionHasCommand(ping, command) {
+    if (command === 'CREATE_MARKETPLACE_LISTINGS' && !versionAtLeast(ping && ping.version, '0.6.6')) return false;
+    if (Array.isArray(ping && ping.commands)) return ping.commands.indexOf(command) !== -1;
+    return Boolean(ping && ping.ok);
+  }
+
+  function callExtension(command, payload) {
+    payload = payload || {};
+    return new Promise(function (resolve, reject) {
+      if (!hasExtensionBridge()) {
+        reject(new Error('The Crosslist Connector extension is not installed on this page.'));
+        return;
+      }
+      var requestId = 'req_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      var timer = setTimeout(function () {
+        window.removeEventListener('message', handler);
+        reject(new Error('The Chrome helper took too long. Open this page in Google Chrome with the extension enabled.'));
+      }, 180000);
+      function handler(event) {
+        if (event.origin !== window.location.origin) return;
+        if (!event.data || event.data.type !== 'CROSSLIST_EXT_RESPONSE') return;
+        if (event.data.requestId !== requestId) return;
+        clearTimeout(timer);
+        window.removeEventListener('message', handler);
+        var response = event.data.response;
+        if (response && response.error) reject(new Error(response.error));
+        else resolve(response || {});
+      }
+      window.addEventListener('message', handler);
+      window.postMessage({ type: 'CROSSLIST_EXT_REQUEST', requestId: requestId, command: command, payload: payload }, window.location.origin);
+    });
+  }
+
+  function ensureExtensionCommand(command) {
+    if (!hasExtensionBridge()) {
+      return Promise.reject(new Error('not-installed'));
+    }
+    return callExtension('PING').then(function (ping) {
+      if (!extensionHasCommand(ping, command)) {
+        throw new Error('Reload the Crosslist Connector (chrome://extensions), then refresh this page and retry.');
+      }
+      return ping;
+    }, function () {
+      throw new Error('not-installed');
+    });
+  }
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -404,7 +478,7 @@
 
     screen.innerHTML =
       '<div class="confirm-head"><h2>Is this what you meant to list?</h2>' +
-      '<p>We identified your item and priced it from recent sales. Fix anything that\'s wrong, then confirm once — we\'ll list it everywhere.</p></div>' +
+      '<p>We identified your item and priced it from recent sales. Fix anything that\'s wrong, then confirm once — the Chrome helper will list it on your stores.</p></div>' +
       '<div class="found"><div class="photos">' + photos + '</div>' +
         '<div class="who"><h3 id="cf-name">' + esc(displayName(id)) + '</h3>' +
         '<div style="color:var(--ink-2)">' + esc(detailBits(id)) + '</div>' + conf + '</div>' +
@@ -479,12 +553,121 @@
       state.screen = 'distributing';
       state.polls = 0;
       renderDistributing();
+      relayPendingToExtension();
       pollStatus();
     }).catch(function (err) {
       btn.disabled = false;
       btn.textContent = 'Confirm & list everywhere';
       document.getElementById('cerr').innerHTML =
         err.status === 401 ? authBanner() : '<div class="alert error">' + esc(err.message) + '</div>';
+    });
+  }
+
+  /* ---------------- extension relay: hand queued jobs to the Chrome helper --- */
+
+  // Statuses still waiting on the extension (freshly queued, or guided after
+  // a failed relay attempt) that carry the task payload the helper needs.
+  function relayableStatuses() {
+    return state.statuses.filter(function (s) {
+      return s && (s.status === 'pending' || s.status === 'guided') && s.extensionTask;
+    });
+  }
+
+  function mergeTaskListings(tasks) {
+    var first = (tasks[0].extensionTask && tasks[0].extensionTask.listing) || {};
+    var images = [];
+    tasks.forEach(function (s) {
+      var list = (s.extensionTask.listing && s.extensionTask.listing.images) || [];
+      list.forEach(function (u) { if (images.indexOf(u) === -1) images.push(u); });
+    });
+    return {
+      title: first.title,
+      description: first.description,
+      price: first.price,
+      currency: first.currency || 'USD',
+      images: images.slice(0, 24),
+      condition: first.condition,
+      quantity: 1,
+      category: first.category,
+      details: first.details
+    };
+  }
+
+  // Map the extension's per-store rows onto auto-list result records.
+  function mapExtensionRows(tasks, result) {
+    var rows = Array.isArray(result && result.results) ? result.results : [];
+    var byPlatform = {};
+    rows.forEach(function (row) { if (row && row.platform) byPlatform[row.platform] = row; });
+    return tasks.map(function (s) {
+      var label = marketById(s.marketplace).label;
+      var row = byPlatform[s.marketplace];
+      if (!row) {
+        return { marketplace: s.marketplace, status: 'failed', error: 'The Chrome helper did not report a result for ' + label + '.' };
+      }
+      if (row.status === 'active') {
+        return { marketplace: s.marketplace, status: 'listed', externalId: row.listingId || null, url: row.url || null };
+      }
+      if (row.status === 'listing' || row.needsReview) {
+        // The helper filled the store's composer and left the tab open for
+        // the seller to review + publish — finished, but not live.
+        return { marketplace: s.marketplace, status: 'needsReview', externalId: row.listingId || null, url: row.url || null };
+      }
+      return { marketplace: s.marketplace, status: 'failed', error: row.error || ('Could not list on ' + label + '.') };
+    });
+  }
+
+  function reportExtensionResults(results) {
+    if (!state.jobId) return Promise.resolve();
+    return fetch('/api/auto-list/' + encodeURIComponent(state.jobId) + '/extension-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ results: results })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw apiError(res, data);
+        return data;
+      });
+    }).then(function (data) {
+      if (state.screen !== 'distributing') return;
+      if (Array.isArray(data.statuses) && data.statuses.length) {
+        state.statuses = data.statuses;
+        renderDistributing();
+      }
+    }).catch(function () {
+      // Statuses persist server-side; the poller will pick them up.
+    });
+  }
+
+  function relayPendingToExtension() {
+    var tasks = relayableStatuses();
+    if (!tasks.length || state.relaying || state.screen !== 'distributing') return;
+    state.relaying = true;
+    renderDistributing();
+
+    function guidedResults(note) {
+      return tasks.map(function (s) {
+        return { marketplace: s.marketplace, status: 'guided', error: note };
+      });
+    }
+
+    ensureExtensionCommand('CREATE_MARKETPLACE_LISTINGS').then(function () {
+      return callExtension('CREATE_MARKETPLACE_LISTINGS', {
+        listing: mergeTaskListings(tasks),
+        platforms: tasks.map(function (s) { return s.marketplace; }),
+        dashboardOrigin: window.location.origin
+      });
+    }).then(function (result) {
+      return reportExtensionResults(mapExtensionRows(tasks, result));
+    }).catch(function (err) {
+      // No helper / helper too old / timed out: leave the jobs queued as
+      // guided so the seller sees exactly what to do (and can retry).
+      var note = err && err.message === 'not-installed'
+        ? 'The Crosslist Connector extension is not installed on this page.'
+        : (err && err.message) || 'The Chrome helper could not be reached.';
+      return reportExtensionResults(guidedResults(note));
+    }).then(function () {
+      state.relaying = false;
+      if (state.screen === 'distributing') renderDistributing();
     });
   }
 
@@ -519,9 +702,9 @@
       var sub = '';
       if (s && s.status === 'listed' && s.url) sub = '<a class="view" href="' + esc(s.url) + '" target="_blank" rel="noopener">View listing →</a>';
       else if (s && s.status === 'listed') sub = 'Your item is live.';
-      else if (s && s.status === 'pending') sub = 'Queued — the helper will pick it up.';
-      else if (s && s.status === 'guided') sub = 'Needs a quick manual step on the site.';
-      else if (s && s.status === 'needsReview') sub = 'Finished, but flagged for your review.';
+      else if (s && s.status === 'pending') sub = state.relaying ? 'Sending to the Chrome helper…' : 'Queued for the Chrome helper.';
+      else if (s && s.status === 'guided') sub = 'Needs the Chrome helper — install it, log into ' + esc(m.label) + ' in that Chrome profile, then retry.';
+      else if (s && s.status === 'needsReview') sub = 'The helper filled the listing — review and publish it in the tab it opened.';
       var err = (s && s.status === 'failed' && s.error) ? '<div class="err">' + esc(s.error) + '</div>' : '';
       return '<div class="mkt"><div class="logo">' + esc(m.initial) + '</div>' +
         '<div><div class="nm">' + esc(m.label) + '</div><div class="st">' + sub + '</div>' + err + '</div>' +
@@ -531,17 +714,24 @@
     var done = state.statuses.length === MARKETS.length &&
       state.statuses.every(function (s) { return s.status && s.status !== null; });
     var listed = state.statuses.filter(function (s) { return s.status === 'listed'; }).length;
+    var relayable = state.statuses.some(function (s) {
+      return s && (s.status === 'pending' || s.status === 'guided') && s.extensionTask;
+    });
 
     screen.innerHTML =
       '<div class="dist-head"><h2>' + (done ? (listed ? 'It\'s live!' : 'Distribution finished') : 'Listing everywhere…') + '</h2>' +
       '<p>' + esc(displayName(state.identity)) + ' · ' + money(state.price) + '</p></div>' +
       '<div class="mkts">' + cards + '</div>' +
+      '<div class="fine">' + esc(EXTENSION_REQUIREMENTS) + '</div>' +
       '<div class="fine">Facebook Marketplace isn\u2019t posted by the app \u2014 ask Muse in chat and it\u2019ll list it for you.</div>' +
       (done ? '<div class="actions"><button class="go ghost" id="another" type="button">List another item</button> ' +
+        (relayable && !state.relaying ? '<button class="go" id="retry-ext" type="button">Retry with the Chrome helper</button> ' : '') +
         '<a class="go" href="/dashboard.html#items" style="text-decoration:none">See my items</a></div>'
-        : '<div class="fine">Posting to each marketplace — this usually takes under a minute.</div>');
+        : '<div class="fine">Posting to each store through the Chrome helper — this usually takes under a minute.</div>');
     var another = document.getElementById('another');
     if (another) another.addEventListener('click', resetAll);
+    var retry = document.getElementById('retry-ext');
+    if (retry) retry.addEventListener('click', relayPendingToExtension);
   }
 
   function pollStatus() {

@@ -6,13 +6,22 @@
 //                                       product + a market price from sold
 //                                       comps via server/photo-intel.js
 //   confirmAutoList(jobId, {identity, price}, ctx)
-//                                    -> distributes to eBay + Grailed via
-//                                       the uniform distributor interface,
-//                                       records per-marketplace status
+//                                    -> queues one extension distribution job
+//                                       per store (eBay, Grailed, Depop,
+//                                       Poshmark, Etsy, Reverb) via the
+//                                       uniform distributor interface; the
+//                                       browser page relays each queued job to
+//                                       the Chrome extension, which posts from
+//                                       the user's logged-in session, then
+//                                       reports the outcome back via
+//                                       recordExtensionResults()
 //                                    (Facebook Marketplace posting is NOT
 //                                     handled by the app — the user posts
 //                                     through Muse chat instead.)
 //   getAutoListStatus(jobId, ctx)    -> per-marketplace status
+//   recordExtensionResults(jobId, results, ctx)
+//                                    -> applies the extension's per-store
+//                                       outcomes to the job's statuses
 //
 // Distributor contract (implemented by sibling workers):
 //   distribute({identity, price, photoPaths, photoUrls}, ctx)
@@ -35,7 +44,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, DATA_DIR, appendActivity, hasListingFailure } from './db.js';
 import { sanitizeListingFailure, platformFailureLabel } from './listing-failures.js';
 
-export const AUTO_LIST_MARKETPLACES = ['ebay', 'grailed'];
+export const AUTO_LIST_MARKETPLACES = ['ebay', 'grailed', 'depop', 'poshmark', 'etsy', 'reverb'];
 // First-class statuses. 'pending' | 'guided' | 'needsReview' are NOT failures:
 // they render as their own states in the progress UI. Only 'failed' is
 // recorded through server/listing-failures.js.
@@ -43,13 +52,21 @@ export const AUTO_LIST_STATUSES = ['listed', 'pending', 'guided', 'needsReview',
 const UPLOADS_PREFIX = '/uploads/';
 
 const DISTRIBUTOR_MODULES = {
-  ebay: './ebay-auto.js',
+  ebay: './ebay-distribute.js',
   grailed: './grailed-distribute.js',
+  depop: './depop-distribute.js',
+  poshmark: './poshmark-distribute.js',
+  etsy: './etsy-distribute.js',
+  reverb: './reverb-distribute.js',
 };
 
 const MARKETPLACE_LABELS = {
   ebay: 'eBay',
   grailed: 'Grailed',
+  depop: 'Depop',
+  poshmark: 'Poshmark',
+  etsy: 'Etsy',
+  reverb: 'Reverb',
 };
 
 // ---------------------------------------------------------------------------
@@ -154,7 +171,7 @@ function updateJobRow(jobId, patch) {
 
 const testOverrides = {
   photoIntel: null,
-  distributors: { ebay: null, grailed: null },
+  distributors: { ebay: null, grailed: null, depop: null, poshmark: null, etsy: null, reverb: null },
 };
 
 /** @internal — test only */
@@ -470,6 +487,9 @@ function normalizeDistributorResult(marketplace, result) {
         : 'Distribution failed';
   }
   if (status !== 'failed') record.error = null;
+  // Carry the extension task through so the browser page can relay the queued
+  // job to the extension (the task holds the listing payload + photo URLs).
+  if (result?.extensionTask) record.extensionTask = result.extensionTask;
   return record;
 }
 
@@ -608,6 +628,43 @@ export function getAutoListStatus(jobId, ctx = {}) {
       ...(job.statuses?.[marketplace] || { status: job.stage === 'done' ? 'failed' : null }),
     })),
     error: job.error,
+  };
+}
+
+/**
+ * Step 4 — apply the extension's per-store outcomes to a job.
+ *
+ * Called by the browser page after it relays queued ('pending') jobs to the
+ * Chrome extension: each result is { marketplace, status, externalId?, url?,
+ * error?, needsReview? }. Only extension-reported outcomes may overwrite a
+ * record, and a 'listed' record is never downgraded by a later report.
+ */
+export function recordExtensionResults(jobId, results = [], ctx = {}) {
+  const user = ctx.user;
+  if (!user?.id) throw httpError(401, 'Sign in required');
+  const job = getJobRow(jobId);
+  if (!job) throw httpError(404, 'Auto-list job not found');
+  if (job.userId !== user.id) throw httpError(403, 'This auto-list job belongs to another account');
+  const statuses = { ...(job.statuses || {}) };
+  for (const result of Array.isArray(results) ? results : []) {
+    const marketplace = String(result?.marketplace || '');
+    if (!AUTO_LIST_MARKETPLACES.includes(marketplace)) continue;
+    const current = statuses[marketplace];
+    const normalized = normalizeDistributorResult(marketplace, result);
+    if (current?.status === 'listed' && normalized.status !== 'listed') continue;
+    statuses[marketplace] = { ...current, ...normalized };
+    if (normalized.status === 'failed') {
+      recordAutoListFailure(user.id, {
+        marketplace,
+        title: identityDisplayName(job.identity),
+        error: normalized.error,
+      });
+    }
+  }
+  updateJobRow(jobId, { statuses });
+  return {
+    jobId,
+    statuses: AUTO_LIST_MARKETPLACES.map((marketplace) => statuses[marketplace]),
   };
 }
 

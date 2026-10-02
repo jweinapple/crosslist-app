@@ -34,7 +34,6 @@ function ebayLoginUrl() {
 
 const CONTENT_SCRIPTS = {
   SCRAPE_FACEBOOK_LISTINGS: ['scrape-utils.js', 'content-facebook.js'],
-  FILL_FACEBOOK_LISTING: ['scrape-utils.js', 'content-facebook.js'],
   SCRAPE_EBAY_LISTINGS: ['scrape-utils.js', 'content-ebay.js'],
   SCRAPE_DEPOP_LISTINGS: ['scrape-utils.js', 'content-depop.js'],
   SCRAPE_POSHMARK_LISTINGS: ['scrape-utils.js', 'content-poshmark.js'],
@@ -968,168 +967,12 @@ async function applyFacebookPrices(listings = []) {
 }
 
 const CREATE_URLS = {
-  facebook: 'https://www.facebook.com/marketplace/create/item',
   ebay: 'https://www.ebay.com/sl/prelist/suggest',
   depop: 'https://www.depop.com/products/create/',
   poshmark: 'https://poshmark.com/create-listing',
   etsy: 'https://www.etsy.com/your/shops/me/tools/listings/create',
   grailed: 'https://www.grailed.com/sell/new',
 };
-
-const FB_CREATE_URL = CREATE_URLS.facebook;
-
-// ---------------------------------------------------------------------------
-// CREATE_FACEBOOK_LISTING — automatic distribution target.
-//
-// HONEST AUTOMATION NOTES:
-// - This is the only way listings reach Facebook Marketplace: there is no
-//   Marketplace listing API, so the server queues a job (see
-//   server/facebook-distribute.js) and this function drives the composer in
-//   the user's own logged-in browser session.
-// - Requirements at run time: (a) this extension installed, (b) the user
-//   signed into Facebook in this Chrome profile, (c) the dashboard open so
-//   it can relay the job here and POST the result back to the server.
-// - Photo delivery goes through createMarketplaceListings (the single choke
-//   point that converts /uploads URLs to data URLs). This wrapper never
-//   touches content scripts or photo fetching directly.
-// ---------------------------------------------------------------------------
-async function createFacebookListingFromJob(payload = {}) {
-  const job = payload.job || {};
-  const jobId = job.jobId || job.payload?.jobId || null;
-  const listing = job.payload || {};
-  const trace = createTrace('facebook distribute');
-
-  // The browser session IS the Facebook credential. Fail fast with a clear
-  // message instead of opening composer tabs that cannot publish.
-  const fbUserId = await getFacebookUserId();
-  if (!fbUserId) {
-    const error =
-      'Not signed in to Facebook in this browser. Sign in to Facebook, then retry the job.';
-    trace.note('No Facebook session');
-    const failure = compactListingFailure(
-      { id: jobId || 'facebook_job', title: listing.title },
-      'facebook',
-      { error, detail: { source: 'extension', step: 'checking Facebook session' } },
-      trace.steps
-    );
-    await rememberListingFailure(failure);
-    return {
-      success: false,
-      jobId,
-      error,
-      step: 'checking Facebook session',
-      needsLogin: true,
-      needsReview: false,
-      failureId: failure.id,
-      trace: trace.steps,
-    };
-  }
-  trace.note(`Facebook session present (user ${fbUserId})`);
-
-  const distributed = await createMarketplaceListings({
-    platforms: ['facebook'],
-    listing,
-    dashboardOrigin: payload.dashboardOrigin || listing.dashboardOrigin || '',
-    autoPublish: true,
-    jobId,
-  });
-  const row = distributed.results?.[0] || {};
-  const published = row.status === 'active';
-  const needsReview = Boolean(row.needsReview);
-  return {
-    success: published,
-    published,
-    jobId,
-    listingId: row.listingId || null,
-    url: row.url || null,
-    needsReview,
-    filled: Boolean(row.filled),
-    error: published
-      ? null
-      : row.error ||
-        (needsReview
-          ? 'The listing form was filled but publishing could not be completed automatically — the composer tab was left open for review.'
-          : 'Facebook distribution failed'),
-    step: published ? null : 'auto-publishing the listing',
-    failureId: row.failure?.id || null,
-    trace: distributed.log || [],
-  };
-}
-
-// Drives the Facebook Marketplace composer for one auto-distribution job:
-// fills title/price/description/category/condition/photos from the prepared
-// payload and clicks Publish. Returns the content script's result verbatim.
-// Tab lifecycle: the tab is closed on success or hard failure; it is left
-// open when the form was filled but publishing needs a human (needsReview),
-// so the seller can finish it by hand.
-async function publishFacebookListingAuto(prepared, jobId, trace) {
-  let tab;
-  try {
-    tab = await chrome.tabs.create({ url: FB_CREATE_URL, active: false });
-    trace.note(`Opened Facebook composer tab ${tab.id} for auto-publish`);
-    await waitForTabLoad(tab.id);
-    await sleep(2500);
-    // content-facebook.js is injected on facebook.com by the manifest; this
-    // is a fallback in case the tab loaded before it ran.
-    await ensureContentScript(tab.id, 'FILL_FACEBOOK_LISTING');
-    await sleep(600);
-
-    let response = null;
-    let lastError = null;
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      try {
-        response = await chrome.tabs.sendMessage(tab.id, {
-          command: 'FILL_FACEBOOK_LISTING',
-          payload: { job: { ...prepared, jobId } },
-        });
-        if (response) break;
-      } catch (error) {
-        lastError = error;
-        trace.note(`Composer message attempt ${attempt + 1} failed: ${error.message}`);
-        await sleep(1200 + attempt * 500);
-        await ensureContentScript(tab.id, 'FILL_FACEBOOK_LISTING');
-      }
-    }
-
-    if (!response) {
-      return {
-        success: false,
-        published: false,
-        error: lastError?.message || 'Could not reach the Facebook composer tab',
-        step: 'driving the listing composer',
-        needsReview: false,
-      };
-    }
-
-    response.jobId = jobId;
-    trace.note(
-      response.success
-        ? `Composer finished: published=${Boolean(response.published)} listingId=${response.listingId || 'n/a'}`
-        : `Composer failed: ${response.error || 'unknown error'}`
-    );
-
-    if (tab?.id) {
-      if (response.needsReview) {
-        trace.note('Left the composer tab open for manual review');
-      } else {
-        await sleep(response.success ? 800 : 0);
-        await chrome.tabs.remove(tab.id).catch((closeError) =>
-          logError('close facebook auto-publish tab', closeError, { tabId: tab.id })
-        );
-      }
-    }
-    return response;
-  } catch (error) {
-    logError('publishFacebookListingAuto', error, { jobId });
-    return {
-      success: false,
-      published: false,
-      error: error.message || 'Facebook distribution failed',
-      step: 'distributing to Facebook',
-      needsReview: false,
-    };
-  }
-}
 
 
 const SESSION_LISTERS = {
@@ -1222,17 +1065,7 @@ async function createMarketplaceListings(payload = {}) {
     let tab;
     let response;
 
-    if (platform === 'facebook' && payload.autoPublish) {
-      // Automatic distribution: drive the FB composer and click Publish.
-      // Photo delivery already happened above via prepareListingImages.
-      trace.note(`Auto-publishing on ${platform} from distribution job ${payload.jobId || ''}`);
-      try {
-        response = await publishFacebookListingAuto(prepared, payload.jobId || null, trace);
-      } catch (error) {
-        logError('publishFacebookListingAuto', error, { platform });
-        response = { success: false, published: false, error: error.message, needsReview: false };
-      }
-    } else if (sessionLister) {
+    if (sessionLister) {
       trace.note(`Listing on ${platform} from Crosslist`);
       try {
         response = await sessionLister(prepared, trace);
@@ -1401,7 +1234,6 @@ const EXTENSION_COMMANDS = [
   'APPLY_ETSY_PRICES',
   'APPLY_REVERB_PRICES',
   'CREATE_MARKETPLACE_LISTINGS',
-  'CREATE_FACEBOOK_LISTING',
   'LISTING_FAILURES',
 ];
 
@@ -1443,8 +1275,6 @@ async function handleExtensionCommand(command, payload = {}) {
       return applyMarketplacePrices('reverb', payload.listings || []);
     case 'CREATE_MARKETPLACE_LISTINGS':
       return createMarketplaceListings(payload);
-    case 'CREATE_FACEBOOK_LISTING':
-      return createFacebookListingFromJob(payload);
     case 'LISTING_FAILURES':
       return listingFailureLog(payload.ack);
     default:

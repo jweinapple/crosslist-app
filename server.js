@@ -11,7 +11,7 @@ import open from 'open';
 import convertHeic from 'heic-convert';
 import * as userStore from './server/db.js';
 import { platformFailureLabel, sanitizeListingFailure, slimListingResult } from './server/listing-failures.js';
-import { initInventory, TITLE_STOPWORDS, TITLE_SIZE_WORDS, stripTitleJunk, collapseRepeatedTitle, cleanedListingTitle, normalizeTitle, titleTokens, titleSimilarity, titlesAreSameProduct, titlesLookRelated, decoratePlatformEntry, getPlatforms, listingHasPlatform, toUnifiedListing, facebookPushListing, findExistingListing, IMAGE_QUERY_DROP, normalizeImageUrl, isRealListingImage, realListingImages, extractOgImage, fetchHtml, ebayItemIdFromListing, fetchListingThumbnail, listingNeedsImageHydration, mapPool, applyListingImages, hydrateListingImages, hydrateMissingListingImages, listingImageList, listingImageKeys, listingsShareImage, listingPlatformKeys, platformsOverlap, summarizeMatchListing, findImageMatchInInventory, findImageMatchGroups, mergeInventoryListings, pickPrimaryListing, mergeObviousDuplicateListings, cleanStoredListingTitles, upsertImportedListing, seedDemoInventory, seedDemoEbayListings, seedDemoFacebookListings, buildMarketplaceCandidates, buildDepopMarketplaceCandidates, buildPoshmarkMarketplaceCandidates, buildEtsyMarketplaceCandidates, buildReverbMarketplaceCandidates, annotateImportCandidates, applyMoneyDivisor, parseListingPrice } from './server/inventory.js';
+import { initInventory, TITLE_STOPWORDS, TITLE_SIZE_WORDS, stripTitleJunk, collapseRepeatedTitle, cleanedListingTitle, normalizeTitle, titleTokens, titleSimilarity, titlesAreSameProduct, titlesLookRelated, decoratePlatformEntry, getPlatforms, listingHasPlatform, toUnifiedListing, findExistingListing, IMAGE_QUERY_DROP, normalizeImageUrl, isRealListingImage, realListingImages, extractOgImage, fetchHtml, ebayItemIdFromListing, fetchListingThumbnail, listingNeedsImageHydration, mapPool, applyListingImages, hydrateListingImages, hydrateMissingListingImages, listingImageList, listingImageKeys, listingsShareImage, listingPlatformKeys, platformsOverlap, summarizeMatchListing, findImageMatchInInventory, findImageMatchGroups, mergeInventoryListings, pickPrimaryListing, mergeObviousDuplicateListings, cleanStoredListingTitles, upsertImportedListing, seedDemoInventory, seedDemoEbayListings, seedDemoFacebookListings, buildMarketplaceCandidates, buildDepopMarketplaceCandidates, buildPoshmarkMarketplaceCandidates, buildEtsyMarketplaceCandidates, buildReverbMarketplaceCandidates, annotateImportCandidates, applyMoneyDivisor, parseListingPrice } from './server/inventory.js';
 import * as autoList from './server/auto-distribute.js';
 
 const app = express();
@@ -3071,10 +3071,6 @@ app.patch('/api/listings/bulk', async (req, res) => {
 
     res.json({
       results,
-      facebookListings: results
-        .filter((r) => r.success)
-        .map((r) => facebookPushListing(r.listing))
-        .filter(Boolean),
     });
   } catch (error) {
     logError('Bulk update', error, { req });
@@ -3110,7 +3106,6 @@ app.post('/api/listings/adjust-prices', async (req, res) => {
     percent,
     count: updated.length,
     listings: updated,
-    facebookListings: updated.map(facebookPushListing).filter(Boolean),
   });
 });
 

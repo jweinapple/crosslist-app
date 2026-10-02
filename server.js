@@ -13,11 +13,6 @@ import * as userStore from './server/db.js';
 import { platformFailureLabel, sanitizeListingFailure, slimListingResult } from './server/listing-failures.js';
 import { initInventory, TITLE_STOPWORDS, TITLE_SIZE_WORDS, stripTitleJunk, collapseRepeatedTitle, cleanedListingTitle, normalizeTitle, titleTokens, titleSimilarity, titlesAreSameProduct, titlesLookRelated, decoratePlatformEntry, getPlatforms, listingHasPlatform, toUnifiedListing, facebookPushListing, findExistingListing, IMAGE_QUERY_DROP, normalizeImageUrl, isRealListingImage, realListingImages, extractOgImage, fetchHtml, ebayItemIdFromListing, fetchListingThumbnail, listingNeedsImageHydration, mapPool, applyListingImages, hydrateListingImages, hydrateMissingListingImages, listingImageList, listingImageKeys, listingsShareImage, listingPlatformKeys, platformsOverlap, summarizeMatchListing, findImageMatchInInventory, findImageMatchGroups, mergeInventoryListings, pickPrimaryListing, mergeObviousDuplicateListings, cleanStoredListingTitles, upsertImportedListing, seedDemoInventory, seedDemoEbayListings, seedDemoFacebookListings, buildMarketplaceCandidates, buildDepopMarketplaceCandidates, buildPoshmarkMarketplaceCandidates, buildEtsyMarketplaceCandidates, buildReverbMarketplaceCandidates, annotateImportCandidates, applyMoneyDivisor, parseListingPrice } from './server/inventory.js';
 import * as autoList from './server/auto-distribute.js';
-import {
-  listPendingJobs as listPendingFacebookJobs,
-  claimJob as claimFacebookJob,
-  completeFacebookJob,
-} from './server/facebook-distribute.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -792,7 +787,6 @@ function isRealConnectionMode(mode) {
 }
 
 const CREATE_URLS = {
-  facebook: 'https://www.facebook.com/marketplace/create/item',
   ebay: 'https://www.ebay.com/sl/prelist/suggest',
   depop: 'https://www.depop.com/products/create/',
   poshmark: 'https://poshmark.com/create-listing',
@@ -801,7 +795,7 @@ const CREATE_URLS = {
 };
 
 const SESSION_LIST_PLATFORMS = new Set(['reverb']);
-const FORM_FILL_PLATFORMS = new Set(['facebook', 'ebay', 'depop', 'poshmark', 'etsy', 'grailed']);
+const FORM_FILL_PLATFORMS = new Set(['ebay', 'depop', 'poshmark', 'etsy', 'grailed']);
 
 function safeUserId(userId) {
   return String(userId || '').replace(/[^a-zA-Z0-9._-]/g, '');
@@ -2916,29 +2910,6 @@ app.get('/api/auto-list/:jobId/status', async (req, res) => {
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'Could not load auto-list status' });
   }
-});
-
-// Facebook Marketplace distribution jobs, relayed through the Chrome extension
-// (Facebook has no public listing API — the extension drives the composer in
-// the user's logged-in browser session). Polled by the dashboard (see F5).
-app.get('/api/facebook/jobs/pending', (req, res) => {
-  const user = getDemoUser();
-  if (!user?.id) return res.status(401).json({ error: 'Sign in required' });
-  return res.json({ jobs: listPendingFacebookJobs(user.id) });
-});
-
-app.post('/api/facebook/jobs/claim', (req, res) => {
-  const user = getDemoUser();
-  if (!user?.id) return res.status(401).json({ error: 'Sign in required' });
-  const job = claimFacebookJob(req.body?.jobId);
-  if (!job || job.userId !== user.id) return res.status(404).json({ error: 'Job not available' });
-  return res.json({ job });
-});
-
-app.post('/api/facebook/jobs/result', (req, res) => {
-  const user = getDemoUser();
-  if (!user?.id) return res.status(401).json({ error: 'Sign in required' });
-  return res.json(completeFacebookJob(user.id, req.body?.jobId, req.body?.result || {}));
 });
 
 const LISTING_CATEGORIES = new Set(['clothing', 'furniture', 'home', 'tech', 'tickets', 'music', 'other']);

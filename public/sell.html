@@ -10,19 +10,17 @@
     --amber: #ffb800; --amber-dark: #f2a900;
     --ink: #131a33; --ink-2: #4a5578; --line: #dfe5f3; --line-2: #c6d0ea; --page: #f4f6fb;
     --good: #0a7a43; --good-soft: #e1f6ea; --warn: #8a5a00; --warn-soft: #fff1d3;
-    --shadow-sm: 0 1px 2px rgba(11,20,55,.06), 0 2px 8px rgba(11,20,55,.05);
+    --bad: #b3261e; --bad-soft: #fdecea;
     --shadow-md: 0 4px 14px rgba(11,20,55,.08), 0 12px 32px rgba(11,20,55,.08);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  html { -webkit-text-size-adjust: 100%; }
   body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif; font-size: 16px; line-height: 1.55; color: var(--ink); background: var(--page); -webkit-font-smoothing: antialiased; }
-  h1, h2, h3 { color: var(--navy); letter-spacing: -0.025em; line-height: 1.12; }
-  a { color: inherit; }
+  h1, h2, h3 { color: var(--navy); letter-spacing: -0.025em; line-height: 1.15; }
   button { font: inherit; }
   :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
-  .wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+  .wrap { width: 100%; max-width: 1060px; margin: 0 auto; padding: 0 24px; }
 
-  /* header */
   .bar { position: sticky; top: 0; z-index: 50; background: var(--navy); box-shadow: 0 4px 18px rgba(11,20,55,.25); }
   .bar .wrap { display: flex; align-items: center; gap: 6px; min-height: 72px; }
   .brand { display: flex; align-items: center; gap: 10px; margin-right: 22px; font-size: 24px; font-weight: 800; letter-spacing: -0.03em; color: #fff; text-decoration: none; }
@@ -34,145 +32,115 @@
   .bar .signin { margin-left: auto; padding: 10px 18px; border: 1.5px solid rgba(255,255,255,.4); border-radius: 12px; font-weight: 700; color: #fff; text-decoration: none; }
   .bar .signin:hover { background: rgba(255,255,255,.14); border-color: #fff; }
 
-  /* hero */
   .hero { color: #fff; background: radial-gradient(700px 360px at 88% -10%, rgba(124,77,255,.5), transparent 60%), radial-gradient(600px 360px at 0% 110%, rgba(31,92,255,.5), transparent 60%), var(--navy); }
-  .hero .wrap { padding-top: 56px; padding-bottom: 64px; display: grid; grid-template-columns: 1fr 480px; gap: 56px; align-items: start; }
-  .hero .wrap > div:first-child { position: sticky; top: 110px; padding-top: 48px; }
-  .eyebrow { font-size: 15px; font-weight: 700; color: rgba(255,255,255,.72); margin-bottom: 14px; }
-  .hero h1 { font-size: clamp(38px, 5.2vw, 62px); font-weight: 800; color: #fff; letter-spacing: -0.035em; }
-  .hero p.lede { margin-top: 18px; font-size: 22px; line-height: 1.45; color: rgba(255,255,255,.86); max-width: 460px; }
-  .assure { margin-top: 26px; display: grid; gap: 10px; list-style: none; }
-  .assure li { display: flex; align-items: center; gap: 12px; font-size: 17px; font-weight: 600; color: rgba(255,255,255,.9); }
-  .assure li::before { content: ""; flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Cpath d='M6 11.5l3.2 3.2L16 7.8' fill='none' stroke='%230b1437' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% no-repeat; }
+  .hero .wrap { padding-top: 48px; padding-bottom: 56px; }
+  .eyebrow { font-size: 15px; font-weight: 700; color: rgba(255,255,255,.72); margin-bottom: 12px; }
+  .hero h1 { font-size: clamp(32px, 4.6vw, 52px); font-weight: 800; color: #fff; letter-spacing: -0.035em; max-width: 640px; }
+  .hero p.lede { margin-top: 14px; font-size: 20px; color: rgba(255,255,255,.86); max-width: 560px; }
 
-  /* the lister card */
-  .lister { background: #fff; color: var(--ink); border-radius: 28px; padding: 24px; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
-  .lister-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-  .lister-top b { font-size: 15px; font-weight: 800; color: var(--navy); }
-  .dots { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--ink-2); }
-  .dots i { width: 26px; height: 6px; border-radius: 999px; background: var(--line); transition: background .3s; }
-  .dots i.on { background: var(--blue); }
+  .pipe { margin-top: 28px; background: #fff; color: var(--ink); border-radius: 28px; padding: 28px; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+  .steps { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; font-size: 14px; font-weight: 700; color: var(--ink-2); }
+  .steps .dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--line); color: var(--ink-2); font-size: 14px; }
+  .steps .st.on { color: var(--navy); }
+  .steps .st.on .dot { background: var(--blue); color: #fff; }
+  .steps .st.done .dot { background: var(--good); color: #fff; }
+  .steps .bar-sep { flex: 1; height: 2px; background: var(--line); border-radius: 2px; min-width: 12px; }
+  .steps .st { display: flex; align-items: center; gap: 8px; }
 
-  .preview { border: 1.5px solid var(--line); border-radius: 20px; overflow: hidden; background: #fff; }
-  .shot { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 10; background: #eef2fb; cursor: pointer; overflow: hidden; }
-  .shot input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
-  .shot .empty { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 16px; color: var(--blue-dark); pointer-events: none; }
-  .shot .empty svg { width: 46px; height: 46px; }
-  .shot .empty strong { font-size: 19px; color: var(--navy); }
-  .shot .empty span { font-size: 14px; color: var(--ink-2); }
-  .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .shot.has-photo .empty { display: none; }
-  .shot.drag { outline: 3px dashed var(--blue); outline-offset: -10px; background: var(--blue-soft); }
-  .meta { padding: 14px 16px 16px; }
-  .meta .t { font-size: 18px; font-weight: 800; color: var(--navy); line-height: 1.25; min-height: 1.25em; }
-  .meta .t.ph { color: #b3bcd6; }
-  .meta .p { margin-top: 2px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--navy); }
-  .meta .p.ph { color: #b3bcd6; }
-  .where { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 28px; font-size: 13px; color: var(--ink-2); }
-  .where .tag { padding: 3px 11px; border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 700; }
-  .where .tag.soon { background: #eef1fa; color: var(--ink-2); }
+  .drop { border: 2.5px dashed var(--line-2); border-radius: 20px; padding: 40px 24px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; background: #fbfcff; }
+  .drop:hover, .drop.drag { border-color: var(--blue); background: var(--blue-soft); }
+  .drop input { display: none; }
+  .drop strong { display: block; font-size: 20px; color: var(--navy); margin-bottom: 6px; }
+  .drop span { color: var(--ink-2); font-size: 15px; }
+  .thumbs { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+  .thumb { position: relative; width: 120px; height: 120px; border-radius: 14px; overflow: hidden; border: 1.5px solid var(--line); background: #eef2fb; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb.uploading { display: grid; place-items: center; color: var(--ink-2); font-size: 13px; font-weight: 700; }
+  .thumb button.rm { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border: none; border-radius: 50%; background: rgba(11,20,55,.75); color: #fff; font-size: 16px; line-height: 1; cursor: pointer; }
+  .thumb .spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--line-2); border-top-color: var(--blue); animation: spin 0.8s linear infinite; }
 
-  .field { margin-top: 14px; }
-  .field[hidden] { display: none; }
-  .field label { display: block; margin-bottom: 6px; font-size: 15px; font-weight: 800; color: var(--navy); }
-  .field .in { position: relative; }
-  .field input[type="text"], .field input[type="number"] { width: 100%; height: 54px; padding: 0 16px; font: inherit; font-size: 18px; color: var(--ink); background: #fff; border: 2px solid var(--line-2); border-radius: 14px; }
+  .go { display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin-top: 20px; min-height: 60px; padding: 0 34px; border: none; border-radius: 16px; background: var(--amber); color: var(--navy); font-size: 19px; font-weight: 800; cursor: pointer; box-shadow: 0 1px 0 var(--amber-dark), 0 6px 16px rgba(0,0,0,.16); transition: background .15s, transform .12s; }
+  .go:hover:not(:disabled) { background: #ffc61f; transform: translateY(-1px); }
+  .go:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+  .go.ghost { background: #fff; border: 2px solid var(--line-2); color: var(--navy); box-shadow: none; font-size: 16px; min-height: 52px; }
+  .fine { margin-top: 12px; font-size: 14px; color: var(--ink-2); }
+
+  .alert { margin-top: 16px; padding: 14px 18px; border-radius: 14px; font-size: 15px; font-weight: 600; }
+  .alert.error { background: var(--bad-soft); color: var(--bad); }
+  .alert.info { background: var(--blue-soft); color: var(--blue-dark); }
+  .alert a { color: inherit; font-weight: 800; }
+
+  .analyzing { text-align: center; padding: 36px 12px; }
+  .bigspin { width: 54px; height: 54px; margin: 0 auto 18px; border-radius: 50%; border: 5px solid var(--line); border-top-color: var(--blue); animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .analyzing h2 { font-size: 26px; margin-bottom: 8px; }
+  .analyzing p { color: var(--ink-2); max-width: 440px; margin: 0 auto; }
+  @media (prefers-reduced-motion: reduce) { .bigspin, .thumb .spin { animation: none; } }
+
+  .confirm-head h2 { font-size: 28px; margin-bottom: 6px; }
+  .confirm-head p { color: var(--ink-2); margin-bottom: 18px; font-size: 17px; }
+  .found { border: 1.5px solid var(--line); border-radius: 20px; overflow: hidden; margin-bottom: 18px; }
+  .found .photos { display: flex; gap: 8px; padding: 14px; overflow-x: auto; background: #f8faff; }
+  .found .photos img { width: 110px; height: 110px; object-fit: cover; border-radius: 12px; flex: none; border: 1px solid var(--line); }
+  .found .who { padding: 18px 20px 20px; }
+  .found .who h3 { font-size: 24px; margin-bottom: 4px; }
+  .conf { display: inline-block; margin-top: 6px; font-size: 14px; font-weight: 700; color: var(--blue-dark); background: var(--blue-soft); border-radius: 999px; padding: 3px 12px; }
+  .fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; padding: 0 20px 20px; }
+  .field label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 800; color: var(--navy); }
+  .field input { width: 100%; height: 50px; padding: 0 14px; font: inherit; font-size: 16px; color: var(--ink); background: #fff; border: 2px solid var(--line-2); border-radius: 12px; }
   .field input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px rgba(31,92,255,.16); }
-  .field .cur { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 18px; font-weight: 700; color: var(--ink-2); }
-  .field .in.money input { padding-left: 34px; }
-  .field.reveal { animation: up .35s cubic-bezier(.2,.7,.2,1) both; }
-  @keyframes up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  .detected { margin-top: 8px; min-height: 22px; font-size: 14px; color: var(--ink-2); }
-  .detected b { margin-left: 4px; padding: 2px 10px; border-radius: 999px; background: var(--blue-soft); color: var(--blue-dark); font-weight: 700; }
+  .field.full { grid-column: 1 / -1; }
 
-  .go { width: 100%; margin-top: 18px; height: 60px; border: none; border-radius: 16px; background: var(--amber); color: var(--navy); font-size: 19px; font-weight: 800; cursor: pointer; box-shadow: 0 1px 0 var(--amber-dark), 0 6px 16px rgba(0,0,0,.16); transition: background .15s, transform .12s; }
-  .go:hover { background: #ffc61f; transform: translateY(-1px); }
-  .go.wide { width: auto; padding: 0 30px; margin-top: 0; }
-  .fine { margin-top: 10px; text-align: center; font-size: 13px; color: var(--ink-2); }
+  .why { border: 1.5px solid var(--line); border-radius: 20px; padding: 18px 20px; margin-bottom: 18px; background: #fbfcff; }
+  .why h3 { font-size: 18px; margin-bottom: 8px; }
+  .why .rat { color: var(--ink-2); font-size: 15.5px; margin-bottom: 12px; }
+  .comp { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
+  .comp .ct { color: var(--ink); }
+  .comp .cs { color: var(--ink-2); font-size: 13.5px; display: block; }
+  .comp .cp { font-weight: 800; color: var(--navy); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-  .take { margin-top: 16px; padding: 14px 16px; border-radius: 16px; background: var(--good-soft); color: #0b3d24; }
-  .take[hidden] { display: none; }
-  .take.reveal { animation: up .35s cubic-bezier(.2,.7,.2,1) both; }
-  .take h4 { font-size: 14px; font-weight: 800; letter-spacing: .01em; color: var(--good); margin-bottom: 8px; }
-  .take .row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 15px; }
-  .take .row + .row { border-top: 1px solid rgba(10,122,67,.18); }
-  .take .row b { font-size: 19px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
-  .take .row small { display: block; font-size: 12.5px; color: #2f6b4b; }
-  .take .row.best b::after { content: "Best"; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--good); color: #fff; font-size: 11px; font-weight: 800; vertical-align: 2px; }
-  .take .fine2 { margin-top: 8px; font-size: 12.5px; color: #2f6b4b; }
-  .keep { margin-top: 2px; font-size: 14px; font-weight: 700; color: var(--good); min-height: 1.2em; }
+  .dest { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 15px; color: var(--ink-2); }
+  .dest .tag { padding: 5px 14px; border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 700; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 
-  .demo { display: grid; grid-template-columns: 1.15fr 1fr; gap: 28px; align-items: start; }
-  .dash { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow-md); padding: 24px; }
-  .dash .flag { position: absolute; top: 18px; right: 18px; padding: 4px 12px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-  .dash .who { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; padding-right: 90px; }
-  .dash .who .img { flex: none; width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, #cfd9f5, #e9edfa); }
-  .dash .who b { display: block; font-size: 17px; color: var(--navy); }
-  .dash .who span { font-size: 14px; color: var(--ink-2); }
-  .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  .kpi { padding: 16px; border-radius: 16px; background: var(--page); }
-  .kpi b { display: block; font-size: 30px; font-weight: 800; letter-spacing: -0.03em; color: var(--navy); line-height: 1.1; font-variant-numeric: tabular-nums; }
-  .kpi span { font-size: 14px; font-weight: 600; color: var(--ink-2); }
-  .dash .cap { margin-top: 14px; font-size: 13.5px; color: var(--ink-2); }
-  .facts { display: grid; gap: 22px; }
-  .facts h3 { font-size: 19px; font-weight: 800; margin-bottom: 4px; }
-  .facts p { color: var(--ink-2); }
+  .mkts { display: grid; gap: 14px; margin-top: 6px; }
+  .mkt { display: flex; gap: 16px; align-items: flex-start; border: 1.5px solid var(--line); border-radius: 18px; padding: 18px 20px; background: #fff; }
+  .mkt .logo { flex: none; width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-weight: 800; font-size: 20px; color: #fff; background: var(--navy); }
+  .mkt .nm { font-size: 18px; font-weight: 800; color: var(--navy); }
+  .mkt .st { font-size: 14.5px; color: var(--ink-2); margin-top: 2px; }
+  .mkt .err { font-size: 14.5px; color: var(--bad); margin-top: 6px; }
+  .pill { margin-left: auto; flex: none; padding: 6px 14px; border-radius: 999px; font-size: 13.5px; font-weight: 800; white-space: nowrap; }
+  .pill.working { background: var(--blue-soft); color: var(--blue-dark); }
+  .pill.listed { background: var(--good-soft); color: var(--good); }
+  .pill.queued { background: var(--blue-soft); color: var(--blue-dark); }
+  .pill.guided, .pill.review { background: var(--warn-soft); color: var(--warn); }
+  .pill.failed { background: var(--bad-soft); color: var(--bad); }
+  .mkt a.view { font-size: 14.5px; font-weight: 700; color: var(--blue-dark); }
+  .dist-head h2 { font-size: 28px; margin-bottom: 6px; }
+  .dist-head p { color: var(--ink-2); margin-bottom: 18px; }
 
-  section { padding: 72px 0; }
-  .head { max-width: 680px; margin-bottom: 36px; }
-  .head h2 { font-size: clamp(28px, 3.4vw, 40px); font-weight: 800; }
-  .head p { margin-top: 12px; font-size: 18px; color: var(--ink-2); }
-
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  .step { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 28px; box-shadow: var(--shadow-sm); }
+  section { padding: 64px 0; }
+  .head { max-width: 680px; margin-bottom: 32px; }
+  .head h2 { font-size: clamp(26px, 3.2vw, 38px); font-weight: 800; }
+  .head p { margin-top: 10px; font-size: 18px; color: var(--ink-2); }
+  .steps3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .step { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 28px; box-shadow: 0 1px 2px rgba(11,20,55,.06), 0 2px 8px rgba(11,20,55,.05); }
   .step .n { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 18px; border-radius: 12px; background: var(--navy); color: #fff; font-weight: 800; }
   .step h3 { font-size: 21px; font-weight: 800; margin-bottom: 8px; }
   .step p { color: var(--ink-2); }
-
-  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  .tile { display: flex; flex-direction: column; gap: 10px; padding: 26px; text-align: left; color: inherit; background: #fff; border: 2px solid var(--line); border-radius: 22px; box-shadow: var(--shadow-sm); cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s; }
-  .tile:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--blue); }
-  .tile[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); }
-  .tile svg { width: 44px; height: 44px; color: var(--blue); }
-  .tile h3 { font-size: 21px; font-weight: 800; }
-  .tile .eg { color: var(--ink-2); font-size: 15px; }
-  .tile .best { margin-top: auto; padding-top: 6px; font-size: 14px; font-weight: 700; color: var(--navy); }
-
-  .stores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  .store { background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 24px; box-shadow: var(--shadow-sm); transition: opacity .25s, border-color .15s; }
-  .store h3 { font-size: 21px; font-weight: 800; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .store p { margin-top: 10px; color: var(--ink-2); font-size: 15.5px; }
-  .store .tags { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
-  .tg { padding: 3px 11px; border-radius: 999px; background: #eef1fa; color: var(--ink-2); font-size: 13px; font-weight: 700; }
-  .badge { padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; }
-  .badge.live { background: var(--good-soft); color: var(--good); }
-  .badge.soon { background: var(--warn-soft); color: var(--warn); }
-  .store.dim { opacity: .38; }
-  .store.match { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(31,92,255,.14), var(--shadow-sm); }
-  .note { margin-top: 20px; font-size: 15px; color: var(--ink-2); }
-
-  .points { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  .point h3 { font-size: 19px; font-weight: 800; margin-bottom: 6px; }
-  .point p { color: var(--ink-2); }
-  .cta { background: var(--navy); }
-  .cta .wrap { display: flex; align-items: center; justify-content: space-between; gap: 32px; flex-wrap: wrap; padding-top: 56px; padding-bottom: 56px; }
-  .cta h2 { color: #fff; font-size: clamp(28px, 3.4vw, 40px); font-weight: 800; max-width: 620px; }
   footer { padding: 28px 0 40px; font-size: 14px; color: var(--ink-2); }
 
-  @media (max-width: 960px) {
-    .hero .wrap { grid-template-columns: 1fr; gap: 32px; padding-top: 36px; padding-bottom: 44px; }
-    .hero p.lede { font-size: 19px; }
-    .hero .wrap > div:first-child { position: static; padding-top: 0; }
-    .assure { display: none; }
-    .steps, .tiles, .stores, .points, .demo { grid-template-columns: 1fr; }
-    section { padding: 52px 0; }
+  @media (max-width: 720px) {
+    .wrap { padding: 0 16px; }
+    .pipe { padding: 20px 16px; }
+    .fields { grid-template-columns: 1fr; }
+    .steps3 { grid-template-columns: 1fr; }
     .bar .wrap { flex-wrap: wrap; padding-top: 10px; padding-bottom: 10px; min-height: 0; }
     .bar nav { order: 3; width: 100%; }
     .bar nav a { flex: 1; text-align: center; padding: 10px 6px; font-size: 14px; }
-    .brand { margin-right: 0; }
+    .steps .st span.lbl { display: none; }
   }
-  @media (max-width: 520px) { .wrap { padding: 0 16px; } .lister { padding: 18px; } .go.wide { width: 100%; } }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 </head>
 <body>
@@ -190,343 +158,489 @@
 </header>
 
 <main>
-  <div class="hero" id="top">
+  <div class="hero">
     <div class="wrap">
-      <div>
-        <div class="eyebrow">It only takes a minute</div>
-        <h1>Got stuff to sell?<br>Let’s get it listed.</h1>
-        <p class="lede">Start with a photo. That’s all we need to begin.</p>
-        <ul class="assure">
-          <li>No long forms</li>
-          <li>You approve everything before it goes live</li>
-          <li>Tickets, furniture, phones, clothes and more</li>
-        </ul>
+      <div class="eyebrow">It only takes a minute</div>
+      <h1>Snap a photo. We handle the listing.</h1>
+      <p class="lede">Just add photos — we identify the exact product, price it from recent sales, and list it everywhere after you confirm.</p>
+
+      <div class="pipe" id="pipe" aria-live="polite">
+        <div class="steps" id="stepper" aria-hidden="true">
+          <div class="st" data-s="photos"><span class="dot">1</span><span class="lbl">Photos</span></div>
+          <div class="bar-sep"></div>
+          <div class="st" data-s="confirm"><span class="dot">2</span><span class="lbl">Confirm</span></div>
+          <div class="bar-sep"></div>
+          <div class="st" data-s="listed"><span class="dot">3</span><span class="lbl">Listed</span></div>
+        </div>
+        <div id="screen"></div>
       </div>
-
-      <form class="lister" id="lister" autocomplete="off">
-        <div class="lister-top"><b>Your listing</b><div class="dots" aria-live="polite"><i></i><i></i><i></i><span id="stepnum">1 of 3</span></div></div>
-
-        <div class="preview">
-          <label class="shot" id="shot">
-            <input id="photo" type="file" accept="image/*,.heic,.heif,.hiec">
-            <div class="empty">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.5l1.2-1.6A1 1 0 0 1 9.5 4h5a1 1 0 0 1 .8.4L16.5 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="12.5" r="3.4"/></svg>
-              <strong>Add a photo</strong>
-              <span>Take one now or choose one you already have</span>
-            </div>
-          </label>
-          <div class="meta">
-            <div class="t ph" id="pv-title">Your item</div>
-            <div class="p ph" id="pv-price">$0</div>
-            <div class="keep" id="pv-keep"></div>
-            <div class="where" id="pv-where"></div>
-          </div>
-        </div>
-
-        <div class="field" id="f-title" hidden>
-          <label for="title">What is it?</label>
-          <div class="in"><input id="title" type="text" placeholder="iPhone 14 Pro, 256 GB"></div>
-          <div class="detected" id="detected" aria-live="polite"></div>
-        </div>
-        <div class="field" id="f-price" hidden>
-          <label for="price">Your price</label>
-          <div class="in money"><span class="cur">$</span><input id="price" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></div>
-        </div>
-
-        <div class="take" id="take" hidden></div>
-        <button class="go" type="submit" id="go">Add a photo to begin</button>
-        <div class="fine">Nothing is posted until you say so.</div>
-      </form>
     </div>
   </div>
 
-  <section id="how">
+  <section>
     <div class="wrap">
-      <div class="head"><h2>Three easy steps</h2><p>Most items take about a minute.</p></div>
-      <div class="steps">
-        <div class="step"><div class="n">1</div><h3>Snap a photo</h3><p>Use your phone or pick one you already have.</p></div>
-        <div class="step"><div class="n">2</div><h3>Say what it is and the price</h3><p>A few words and a number. That’s it.</p></div>
-        <div class="step"><div class="n">3</div><h3>Choose where it goes</h3><p>We show the sites that fit your item. You press Post.</p></div>
+      <div class="head"><h2>How it works</h2><p>No forms, no per-site setup. Three steps.</p></div>
+      <div class="steps3">
+        <div class="step"><div class="n">1</div><h3>Snap photos</h3><p>Add one or more photos of your item. That's the only thing you have to provide.</p></div>
+        <div class="step"><div class="n">2</div><h3>Confirm what we found</h3><p>We identify the exact product and suggest a price from recent sold listings. You correct anything that's off — on one screen.</p></div>
+        <div class="step"><div class="n">3</div><h3>We list it everywhere</h3><p>One tap lists it on eBay, Facebook Marketplace, and Grailed. You watch each one go live.</p></div>
       </div>
     </div>
   </section>
-
-  <section id="categories" style="padding-top:0">
-    <div class="wrap">
-      <div class="head"><h2>Sell almost anything</h2><p>Tap a category to see where it does best.</p></div>
-      <div class="tiles" id="tiles"></div>
-    </div>
-  </section>
-
-  <section id="where" style="padding-top:0">
-    <div class="wrap">
-      <div class="head"><h2 id="where-title">Where it can go</h2><p id="where-sub">Tap a category above to see which sites fit it best.</p></div>
-      <div class="stores" id="stores"></div>
-      <p class="note">Some sites are still being connected. They’re marked “Coming soon” so you always know what works today.</p>
-    </div>
-  </section>
-
-  <section id="after" style="padding-top:0">
-    <div class="wrap">
-      <div class="head"><h2>Know how it’s doing</h2><p>Once an item is live, this is where you’ll see what’s happening with it.</p></div>
-      <div class="demo">
-        <div class="dash" aria-label="Example of the item summary">
-          <span class="flag">Example</span>
-          <div class="who"><div class="img" aria-hidden="true"></div><div><b>Oak dresser, 6 drawers</b><span>Listed on 2 sites</span></div></div>
-          <div class="kpis">
-            <div class="kpi"><b>128</b><span>People who’ve looked</span></div>
-            <div class="kpi"><b>9</b><span>Saved it</span></div>
-            <div class="kpi"><b>2</b><span>Offers</span></div>
-            <div class="kpi"><b>$310</b><span>Similar items sold for</span></div>
-          </div>
-          <p class="cap">Sample numbers to show the idea. Yours will come from the sites where you list.</p>
-        </div>
-        <div class="facts">
-          <div><h3>What you’ll take home</h3><p>Before you post, we show an estimate of what you’d keep after each site’s fees, so there are no surprises.</p></div>
-          <div><h3>How you get paid</h3><p>Buyers pay through each site’s own checkout, and the site pays you out. Local pickup sales are usually settled in person.</p></div>
-          <div><h3>What similar items sold for</h3><p>We’re working on showing recent sale prices next to your price, so you can choose one with confidence.</p></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section style="padding-top:0">
-    <div class="wrap">
-      <div class="points">
-        <div class="point"><h3>You’re in control</h3><p>You choose where each item goes. Nothing posts until you approve it.</p></div>
-        <div class="point"><h3>One list for everything</h3><p>See what’s listed where at a glance, without spreadsheets or a dozen tabs.</p></div>
-        <div class="point"><h3>Made to be simple</h3><p>Big buttons, plain words, and only a few clicks from start to finish.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <div class="cta"><div class="wrap"><h2>Your stuff is worth more than it’s doing in a closet.</h2><button class="go wide" type="button" id="cta-go">Start with a photo &rarr;</button></div></div>
 </main>
 
-<footer><div class="wrap">Preview: StubHub, Ticketmaster and Chairish are planned and not connected yet. Store names belong to their respective owners.</div></footer>
+<footer><div class="wrap">Nothing is posted until you confirm. Store names belong to their respective owners.</div></footer>
 
 <script>
 (function () {
   'use strict';
-  var $ = function (id) { return document.getElementById(id); };
-  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var CATS = [
-    { id: 'tickets',   label: 'Event tickets',    eg: 'Concerts, sports, theater',         best: ['stubhub', 'ticketmaster', 'ebay'],
-      icon: '<path d="M4 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8Z"/><path d="M14 6v12" stroke-dasharray="2 2.5"/>' },
-    { id: 'furniture', label: 'Furniture',        eg: 'Sofas, tables, dressers, desks',    best: ['chairish', 'ebay'],
-      icon: '<path d="M5 11V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v3"/><path d="M3 13a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v4H3v-4Z"/><path d="M6 17v2M18 17v2"/>' },
-    { id: 'home',      label: 'Home & decor',     eg: 'Lamps, rugs, art, kitchenware',     best: ['chairish', 'ebay'],
-      icon: '<path d="M9 3h6l1.5 6h-9L9 3Z"/><path d="M12 9v9"/><path d="M8 21h8"/>' },
-    { id: 'tech',      label: 'Phones & tech',    eg: 'iPhones, laptops, accessories',     best: ['ebay'],
-      icon: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>' },
-    { id: 'clothing',  label: 'Clothing & shoes', eg: 'Jackets, jeans, sneakers, bags',    best: ['poshmark', 'ebay'],
-      icon: '<path d="M12 6a2 2 0 1 0-2-2"/><path d="M12 6v2l8 5a1.5 1.5 0 0 1-.8 2.8H4.8A1.5 1.5 0 0 1 4 13l8-5"/>' },
-    { id: 'music',     label: 'Music & gear',     eg: 'Guitars, pedals, mics, amps',        best: ['reverb', 'ebay'],
-      icon: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>' },
-    { id: 'other',     label: 'Something else',   eg: 'Books, toys, collectibles, tools',  best: ['ebay'],
-      icon: '<path d="M4 8l8-4 8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/>' }
+  var screen = document.getElementById('screen');
+  var stepper = document.getElementById('stepper');
+
+  var MARKETS = [
+    { id: 'ebay', label: 'eBay', initial: 'e' },
+    { id: 'facebook', label: 'Facebook Marketplace', initial: 'f' },
+    { id: 'grailed', label: 'Grailed', initial: 'G' }
   ];
-  var STORES = [
-    { id: 'ebay',         name: 'eBay',                 live: true,  blurb: 'A huge audience for almost anything, shipped anywhere.', tags: ['Almost anything'] },
-    { id: 'poshmark',     name: 'Poshmark',             live: true,  blurb: 'Built around fashion, with shoppers who love a deal.',  tags: ['Clothing', 'Shoes', 'Accessories'] },
-    { id: 'reverb',       name: 'Reverb',               live: true,  blurb: 'The marketplace for musical instruments and audio gear.', tags: ['Guitars', 'Pedals', 'Mics'] },
-    { id: 'stubhub',      name: 'StubHub',              live: false, blurb: 'A marketplace made for buying and selling event tickets.', tags: ['Tickets'] },
-    { id: 'ticketmaster', name: 'Ticketmaster',         live: false, blurb: 'Resale for events. Their transfer rules apply, so check them first.', tags: ['Tickets'] },
-    { id: 'chairish',     name: 'Chairish',             live: false, blurb: 'Vintage and design-minded furniture and decor.',        tags: ['Furniture', 'Decor'] }
-  ];
-  var KEYWORDS = {
-    tickets:   /\b(ticket|tickets|concert|tour|festival|game|playoff|seats?|section|row|show|broadway|vs\.?)\b/i,
-    tech:      /\b(iphone|ipad|macbook|laptop|phone|samsung|pixel|airpods?|charger|case|camera|tv|monitor|playstation|xbox|switch|console|headphones?|watch|apple|android)\b/i,
-    furniture: /\b(sofa|couch|chair|table|desk|dresser|bed|nightstand|bookshelf|shelf|cabinet|ottoman|stool|bench|wardrobe)\b/i,
-    home:      /\b(lamp|rug|vase|mirror|art|painting|candle|pillow|curtain|kitchen|dish|plate|pot|pan|decor|frame|blanket)\b/i,
-    clothing:  /\b(jacket|jeans|shirt|dress|shoes?|sneakers?|nike|adidas|boots?|coat|sweater|hoodie|bag|purse|levi|pants|skirt)\b/i,
-    music:     /\b(guitar|bass|amp|amplifier|pedal|synth|drum|snare|cymbal|microphone|mic|fender|gibson|strat|telecaster|keyboard|mixer|audio)\b/i
+
+  var state = {
+    screen: 'photos', // photos | analyzing | confirm | distributing
+    photos: [],       // {url, filename}
+    uploading: 0,
+    jobId: null,
+    identity: null,
+    price: null,
+    currency: 'USD',
+    comps: [],
+    rationale: '',
+    confidence: null,
+    statuses: [],
+    error: null,
+    polls: 0
   };
-  var byId = function (list, id) { return list.filter(function (x) { return x.id === id; })[0]; };
-  var detect = function (t) { for (var k in KEYWORDS) if (KEYWORDS[k].test(t)) return k; return null; };
 
-  // Estimates of what a seller keeps. Fees change: check each site's current fee page and update here.
-  // (Approximate, standard rates in USD; excludes shipping, taxes, promoted listings and payment extras.)
-  var FEES = {
-    ebay:     { name: 'eBay',                 net: function (p) { var f = p * 0.1325 + (p <= 10 ? 0.30 : 0.40); return { fee: f, note: 'about 13% + 40\u00a2' }; } },
-    poshmark: { name: 'Poshmark',             net: function (p) { return p > 15 ? { fee: p * 0.20, note: '20%' } : { fee: 2.95, note: 'flat $2.95' }; } },
-    reverb:   { name: 'Reverb',               net: function (p) { return { fee: p * 0.05, note: 'about 5%' }; } }
-  };
-  var money = function (n) { return '$' + n.toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
-
-  var state = { photo: '', title: '', price: '', category: null };
-
-  // ---------- lower page: tiles + stores ----------
-  CATS.forEach(function (c) {
-    var t = document.createElement('button');
-    t.type = 'button'; t.className = 'tile'; t.setAttribute('data-cat', c.id); t.setAttribute('aria-pressed', 'false');
-    t.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + c.icon + '</svg><h3></h3><div class="eg"></div><div class="best"></div>';
-    t.querySelector('h3').textContent = c.label;
-    t.querySelector('.eg').textContent = c.eg;
-    t.querySelector('.best').textContent = 'Good on ' + c.best.slice(0, 2).map(function (id) { return byId(STORES, id).name; }).join(' and ');
-    t.addEventListener('click', function () { setCategory(state.category === c.id ? null : c.id); if (state.category) $('where').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' }); });
-    $('tiles').appendChild(t);
-  });
-  STORES.forEach(function (s) {
-    var d = document.createElement('div');
-    d.className = 'store'; d.setAttribute('data-store', s.id);
-    d.innerHTML = '<h3><span class="nm"></span><span class="badge"></span></h3><p></p><div class="tags"></div>';
-    d.querySelector('.nm').textContent = s.name;
-    var b = d.querySelector('.badge'); b.textContent = s.live ? 'Available now' : 'Coming soon'; b.className = 'badge ' + (s.live ? 'live' : 'soon');
-    d.querySelector('p').textContent = s.blurb;
-    s.tags.forEach(function (t) { var e = document.createElement('span'); e.className = 'tg'; e.textContent = t; d.querySelector('.tags').appendChild(e); });
-    $('stores').appendChild(d);
-  });
-
-  function setCategory(id) {
-    state.category = id;
-    var cat = id ? byId(CATS, id) : null;
-    Array.prototype.forEach.call(document.querySelectorAll('.tile'), function (el) { el.setAttribute('aria-pressed', el.getAttribute('data-cat') === id ? 'true' : 'false'); });
-    Array.prototype.forEach.call(document.querySelectorAll('.store'), function (el) {
-      var m = cat && cat.best.indexOf(el.getAttribute('data-store')) !== -1;
-      el.classList.toggle('match', !!m); el.classList.toggle('dim', !!cat && !m);
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
-    $('where-title').textContent = cat ? 'Where ' + cat.label.toLowerCase() + ' sell well' : 'Where it can go';
-    $('where-sub').textContent = cat ? 'Highlighted sites are the best fit. You choose where each item goes.' : 'Tap a category above to see which sites fit it best.';
-    renderWhere();
+  }
+  function money(n) {
+    var v = Number(n);
+    if (!isFinite(v)) return '—';
+    return '$' + v.toLocaleString(undefined, { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 });
+  }
+  function displayName(id) {
+    if (!id) return 'Your item';
+    var parts = [id.brand, id.name || id.model].filter(Boolean);
+    return parts.join(' ') || 'Your item';
+  }
+  function detailBits(id) {
+    if (!id) return '';
+    return [id.model && id.model !== id.name ? 'Model: ' + id.model : '',
+            id.size ? 'Size: ' + id.size : '',
+            id.color ? 'Color: ' + id.color : '',
+            id.condition ? 'Condition: ' + id.condition : ''].filter(Boolean).join(' · ');
   }
 
-  // ---------- the lister ----------
-  var examples = ['iPhone 14 Pro, 256 GB', 'Oak dresser, 6 drawers', 'Two tickets, Saturday night', 'Levi’s denim jacket, medium', 'Standing desk, walnut', 'PS5 with two controllers'];
-  var exi = 0;
-  setInterval(function () { if (!state.title && document.activeElement !== $('title')) { exi = (exi + 1) % examples.length; $('title').placeholder = examples[exi]; } }, 2600);
-
-  function stage() { return !state.photo ? 1 : !state.title ? 2 : 3; }
-
-  function renderWhere() {
-    var box = $('pv-where'); box.textContent = '';
-    var cat = state.category ? byId(CATS, state.category) : null;
-    if (!cat || !state.title) return;
-    var lead = document.createElement('span'); lead.textContent = 'Fits:'; box.appendChild(lead);
-    cat.best.forEach(function (id) {
-      var s = byId(STORES, id); var e = document.createElement('span');
-      e.className = 'tag' + (s.live ? '' : ' soon'); e.textContent = s.name + (s.live ? '' : ' (soon)'); box.appendChild(e);
+  function setStep(which) {
+    var order = { photos: 0, analyzing: 0, confirm: 1, distributing: 2 };
+    var idx = order[which] == null ? 0 : order[which];
+    Array.prototype.forEach.call(stepper.querySelectorAll('.st'), function (el, i) {
+      el.classList.toggle('on', i === idx);
+      el.classList.toggle('done', i < idx);
+      el.querySelector('.dot').textContent = i < idx ? '✓' : String(i + 1);
     });
   }
 
-  function renderTake() {
-    var box = $('take'), keep = $('pv-keep');
-    var p = Number(state.price);
-    keep.textContent = '';
-    if (state.price === '' || !isFinite(p) || p <= 0 || !state.title) { box.hidden = true; return; }
-    var cat = byId(CATS, state.category || 'other');
-    var live = cat.best.filter(function (id) { return byId(STORES, id).live && FEES[id]; });
-    var wasHidden = box.hidden;
-    box.textContent = '';
-    if (!live.length) {
-      var h = document.createElement('h4'); h.textContent = 'What you\u2019d take home'; box.appendChild(h);
-      var m = document.createElement('div'); m.className = 'fine2'; m.textContent = 'The best sites for this are still being connected, and their fees vary. We\u2019ll show your estimate here once they\u2019re ready.'; box.appendChild(m);
-      box.hidden = false; return;
+  function apiError(res, data) {
+    var err = new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+    err.status = res.status;
+    return err;
+  }
+  function authBanner() {
+    return '<div class="alert error">Please <a href="/dashboard.html">sign in</a> to list items.</div>';
+  }
+
+  /* ---------------- screen 1: photos only ---------------- */
+
+  function renderPhotos() {
+    setStep('photos');
+    var thumbs = state.photos.map(function (p, i) {
+      return '<div class="thumb"><img src="' + esc(p.url) + '" alt="Photo ' + (i + 1) + '">' +
+        '<button class="rm" type="button" data-rm="' + i + '" aria-label="Remove photo">×</button></div>';
+    }).join('');
+    var uploading = '';
+    for (var u = 0; u < state.uploading; u++) {
+      uploading += '<div class="thumb uploading"><div class="spin"></div></div>';
     }
-    var rows = live.map(function (id) {
-      var f = FEES[id], r = f.net(p);
-      var o = { id: id, name: f.name, net: Math.max(0, p - r.fee), note: r.note, local: f.local };
-      if (f.local) o.localNet = p;
-      return o;
+    screen.innerHTML =
+      '<div class="drop" id="drop" role="button" tabindex="0" aria-label="Add photos">' +
+        '<input id="file" type="file" accept="image/*,.heic,.heif,.hiec" multiple>' +
+        '<strong>Add photos of your item</strong>' +
+        '<span>Tap to choose, or drag &amp; drop. The more angles, the better the match.</span>' +
+      '</div>' +
+      (thumbs || uploading ? '<div class="thumbs">' + thumbs + uploading + '</div>' : '') +
+      '<div id="perr"></div>' +
+      '<button class="go" id="identify" ' + (state.photos.length && !state.uploading ? '' : 'disabled') + '>Identify my item →</button>' +
+      '<div class="fine">Only photos needed — we figure out what it is and what it\'s worth. Nothing is posted until you confirm.</div>';
+
+    var drop = document.getElementById('drop');
+    var file = document.getElementById('file');
+    drop.addEventListener('click', function () { file.click(); });
+    drop.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('drag'); });
     });
-    rows.sort(function (a, b) { return (b.localNet || b.net) - (a.localNet || a.net); });
-    var hh = document.createElement('h4'); hh.textContent = 'What you\u2019d take home (estimate)'; box.appendChild(hh);
-    rows.forEach(function (r, i) {
-      var row = document.createElement('div'); row.className = 'row' + (i === 0 ? ' best' : '');
-      var left = document.createElement('div'); left.textContent = r.name;
-      var sm = document.createElement('small'); sm.textContent = r.local ? r.local + ' \u00b7 ' + money(r.net) + ' if shipped' : 'Fees ' + r.note; left.appendChild(sm);
-      var b = document.createElement('b'); b.textContent = money(r.localNet || r.net);
-      row.appendChild(left); row.appendChild(b); box.appendChild(row);
+    ['dragleave', 'drop'].forEach(function (ev) {
+      drop.addEventListener(ev, function (e) {
+        e.preventDefault(); drop.classList.remove('drag');
+        if (ev === 'drop' && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+      });
     });
-    var fine = document.createElement('div'); fine.className = 'fine2'; fine.textContent = 'Estimates use standard fees and leave out shipping. Check each site for current rates.'; box.appendChild(fine);
-    box.hidden = false;
-    if (wasHidden && !reduce) { box.classList.remove('reveal'); void box.offsetWidth; box.classList.add('reveal'); }
-    keep.textContent = 'You could keep about ' + money(rows[0].localNet || rows[0].net) + (rows[0].local ? ' with local pickup' : '');
+    file.addEventListener('change', function () { addFiles(this.files); this.value = ''; });
+    Array.prototype.forEach.call(screen.querySelectorAll('[data-rm]'), function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        state.photos.splice(Number(btn.getAttribute('data-rm')), 1);
+        renderPhotos();
+      });
+    });
+    document.getElementById('identify').addEventListener('click', startAnalysis);
   }
 
-  function render() {
-    var st = stage();
-    var dots = document.querySelectorAll('.dots i');
-    Array.prototype.forEach.call(dots, function (d, i) { d.classList.toggle('on', i < st); });
-    $('stepnum').textContent = st + ' of 3';
-
-    var hasTitle = !!state.title, hasPrice = state.price !== '' && Number(state.price) >= 0 && !isNaN(Number(state.price));
-    $('pv-title').textContent = hasTitle ? state.title : 'Your item'; $('pv-title').className = 't' + (hasTitle ? '' : ' ph');
-    $('pv-price').textContent = hasPrice && state.price !== '' ? '$' + Number(state.price).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '$0';
-    $('pv-price').className = 'p' + (hasPrice && state.price !== '' ? '' : ' ph');
-
-    var ft = $('f-title'), fp = $('f-price');
-    if (state.photo && ft.hidden) { ft.hidden = false; if (!reduce) ft.classList.add('reveal'); }
-    if (state.title && fp.hidden) { fp.hidden = false; if (!reduce) fp.classList.add('reveal'); }
-
-    var go = $('go');
-    go.textContent = !state.photo ? 'Add a photo to begin' : !state.title ? 'Next: what is it?' : (state.price === '' ? 'Next: set your price' : 'List it →');
-    renderWhere();
-    renderTake();
+  function showPhotoError(msg, auth) {
+    document.getElementById('perr').innerHTML =
+      auth ? authBanner() : '<div class="alert error">' + esc(msg) + '</div>';
   }
 
-  // resize the photo so it's light enough to carry to the next page
-  function isPhotoFile(file) {
-    if (!file) return false;
-    if (/^image\//.test(file.type || '')) return true;
-    return /\.(jpe?g|png|webp|gif|heic|heif|hiec)$/i.test(file.name || '');
+  function addFiles(files) {
+    Array.prototype.forEach.call(files, function (f) {
+      if (!/^image\//.test(f.type || '') && !/\.(jpe?g|png|webp|gif|heic|heif|hiec)$/i.test(f.name || '')) return;
+      state.uploading++;
+      renderPhotos();
+      uploadPhoto(f).then(function (saved) {
+        state.photos.push(saved);
+      }).catch(function (err) {
+        showPhotoError(err.status === 401 ? '' : err.message, err.status === 401);
+      }).finally(function () {
+        state.uploading--;
+        renderPhotos();
+      });
+    });
   }
-  function usePhotoCanvas(canvas) {
-    state.photo = canvas.toDataURL('image/jpeg', 0.85);
-    var shot = $('shot'); var old = shot.querySelector('img'); if (old) old.remove();
-    var im = document.createElement('img'); im.alt = 'Your photo'; im.src = state.photo; shot.appendChild(im); shot.classList.add('has-photo');
-    render(); setTimeout(function () { $('title').focus({ preventScroll: true }); }, 60);
+
+  function uploadPhoto(file) {
+    if (file.size > 10 * 1024 * 1024) return Promise.reject(new Error('"' + file.name + '" is larger than 10MB.'));
+    return fetch('/api/uploads', {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'x-filename': encodeURIComponent(file.name || 'photo.jpg')
+      },
+      body: file
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw apiError(res, data);
+        return { url: data.url, filename: data.filename || file.name };
+      });
+    });
   }
-  function drawPhoto(source, width, height) {
-    var max = 900, r = Math.min(1, max / Math.max(width, height));
-    var c = document.createElement('canvas'); c.width = Math.round(width * r); c.height = Math.round(height * r);
-    c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
-    if (source.close) source.close();
-    usePhotoCanvas(c);
+
+  /* ---------------- screen 2: analyzing ---------------- */
+
+  function startAnalysis() {
+    if (!state.photos.length) return;
+    state.screen = 'analyzing';
+    state.error = null;
+    setStep('analyzing');
+    screen.innerHTML =
+      '<div class="analyzing"><div class="bigspin" role="status" aria-label="Analyzing"></div>' +
+      '<h2>Looking at your photos…</h2>' +
+      '<p>Identifying the exact product and checking what similar items recently sold for.</p></div>';
+
+    fetch('/api/auto-list/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photos: state.photos.map(function (p) { return p.url; }) })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw apiError(res, data);
+        return data;
+      });
+    }).then(function (data) {
+      state.jobId = data.jobId;
+      state.identity = data.identity || {};
+      state.price = data.price;
+      state.currency = data.currency || 'USD';
+      state.comps = data.comps || [];
+      state.rationale = data.rationale || '';
+      state.confidence = data.confidence;
+      state.screen = 'confirm';
+      renderConfirm();
+    }).catch(function (err) {
+      state.screen = 'photos';
+      renderPhotos();
+      showPhotoError(err.status === 401 ? '' : err.message, err.status === 401);
+    });
   }
-  function loadPhoto(file) {
-    if (!isPhotoFile(file)) return;
-    var img = new Image(); var url = URL.createObjectURL(file);
-    img.onload = function () {
-      URL.revokeObjectURL(url);
-      drawPhoto(img, img.width, img.height);
+
+  /* ---------------- screen 3: ONE confirmation screen ---------------- */
+
+  function renderConfirm() {
+    setStep('confirm');
+    var id = state.identity || {};
+    var photos = state.photos.map(function (p) {
+      return '<img src="' + esc(p.url) + '" alt="Your photo" loading="lazy">';
+    }).join('');
+    var conf = (state.confidence != null && isFinite(Number(state.confidence)))
+      ? '<span class="conf">We\'re ' + Math.round(Number(state.confidence) * 100) + '% confident — correct anything that\'s off</span>'
+      : '<span class="conf">Review everything before it goes live</span>';
+    var comps = (state.comps || []).map(function (c) {
+      var meta = [c.soldDate, c.source].filter(Boolean).join(' · ');
+      return '<div class="comp"><div><div class="ct">' + esc(c.title || 'Similar item') + '</div>' +
+        (meta ? '<span class="cs">' + esc(meta) + '</span>' : '') + '</div>' +
+        '<div class="cp">' + (c.price != null ? money(c.price) : '—') + '</div></div>';
+    }).join('');
+
+    screen.innerHTML =
+      '<div class="confirm-head"><h2>Is this what you meant to list?</h2>' +
+      '<p>We identified your item and priced it from recent sales. Fix anything that\'s wrong, then confirm once — we\'ll list it everywhere.</p></div>' +
+      '<div class="found"><div class="photos">' + photos + '</div>' +
+        '<div class="who"><h3 id="cf-name">' + esc(displayName(id)) + '</h3>' +
+        '<div style="color:var(--ink-2)">' + esc(detailBits(id)) + '</div>' + conf + '</div>' +
+        '<div class="fields">' +
+          fld('cf-brand', 'Brand', id.brand) +
+          fld('cf-name-in', 'Product name', id.name) +
+          fld('cf-model', 'Model', id.model) +
+          fld('cf-size', 'Size', id.size) +
+          fld('cf-color', 'Color', id.color) +
+          fld('cf-condition', 'Condition', id.condition) +
+          '<div class="field full"><label for="cf-price">Your price</label>' +
+            '<input id="cf-price" type="number" inputmode="decimal" min="0" step="0.01" value="' + esc(state.price != null ? state.price : '') + '"></div>' +
+        '</div></div>' +
+      '<div class="why"><h3>Why ' + money(state.price) + '?</h3>' +
+        (state.rationale ? '<div class="rat">' + esc(state.rationale) + '</div>' : '') +
+        (comps || '<div class="rat">No comparable sales found — the price is our best estimate.</div>') + '</div>' +
+      '<div class="dest"><span>Will be listed on:</span>' +
+        MARKETS.map(function (m) { return '<span class="tag">' + esc(m.label) + '</span>'; }).join('') + '</div>' +
+      '<div id="cerr"></div>' +
+      '<div class="actions">' +
+        '<button class="go" id="confirm">Confirm &amp; list everywhere</button>' +
+        '<button class="go ghost" id="restart" type="button">Start over</button>' +
+      '</div>' +
+      '<div class="fine">Nothing is posted until you press confirm.</div>';
+
+    ['cf-brand', 'cf-name-in', 'cf-model'].forEach(function (fid) {
+      document.getElementById(fid).addEventListener('input', function () {
+        document.getElementById('cf-name').textContent = displayName(readIdentity());
+      });
+    });
+    document.getElementById('confirm').addEventListener('click', confirmAndDistribute);
+    document.getElementById('restart').addEventListener('click', resetAll);
+  }
+
+  function fld(fid, label, value) {
+    return '<div class="field"><label for="' + fid + '">' + label + '</label>' +
+      '<input id="' + fid + '" type="text" value="' + esc(value || '') + '" autocomplete="off"></div>';
+  }
+
+  function readIdentity() {
+    function v(fid) { var el = document.getElementById(fid); return el ? el.value.trim() : ''; }
+    return {
+      brand: v('cf-brand'), name: v('cf-name-in'), model: v('cf-model'),
+      size: v('cf-size'), color: v('cf-color'), condition: v('cf-condition')
     };
-    img.onerror = function () {
-      URL.revokeObjectURL(url);
-      if (typeof createImageBitmap !== 'function') return;
-      createImageBitmap(file).then(function (bitmap) {
-        drawPhoto(bitmap, bitmap.width, bitmap.height);
-      }).catch(function () {});
-    };
-    img.src = url;
   }
-  $('photo').addEventListener('change', function () { loadPhoto(this.files[0]); });
-  ['dragenter', 'dragover'].forEach(function (ev) { $('shot').addEventListener(ev, function (e) { e.preventDefault(); this.classList.add('drag'); }); });
-  ['dragleave', 'drop'].forEach(function (ev) { $('shot').addEventListener(ev, function (e) { e.preventDefault(); this.classList.remove('drag'); if (ev === 'drop' && e.dataTransfer.files[0]) loadPhoto(e.dataTransfer.files[0]); }); });
 
-  $('title').addEventListener('input', function () {
-    state.title = this.value.trim();
-    var found = state.title ? detect(state.title) : null;
-    var box = $('detected'); box.textContent = '';
-    if (found) { box.appendChild(document.createTextNode('Looks like ')); var b = document.createElement('b'); b.textContent = byId(CATS, found).label; box.appendChild(b); }
-    setCategory(found);
-    render();
-  });
-  $('price').addEventListener('input', function () { state.price = this.value; render(); });
+  function confirmAndDistribute() {
+    var btn = document.getElementById('confirm');
+    var priceInput = document.getElementById('cf-price');
+    var price = Number(priceInput.value);
+    if (!isFinite(price) || price < 0) {
+      document.getElementById('cerr').innerHTML = '<div class="alert error">Enter a valid price of 0 or more.</div>';
+      priceInput.focus();
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Listing…';
+    document.getElementById('cerr').innerHTML = '';
 
-  // the big button always does the next thing
-  $('lister').addEventListener('submit', function (e) {
-    e.preventDefault();
-    if (!state.photo) { $('photo').click(); return; }
-    if (!state.title) { $('title').focus(); return; }
-    if (state.price === '') { $('price').focus(); return; }
-    try { sessionStorage.setItem('crosslist_sell_intent', JSON.stringify({ category: state.category || 'other', title: state.title, price: state.price, photo: state.photo })); } catch (err) {}
-    window.location.href = '/dashboard.html#list';
-  });
-  $('cta-go').addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' }); setTimeout(function () { $('photo').click(); }, reduce ? 0 : 350); });
+    fetch('/api/auto-list/' + encodeURIComponent(state.jobId) + '/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: readIdentity(), price: price })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw apiError(res, data);
+        return data;
+      });
+    }).then(function (data) {
+      state.statuses = data.statuses || [];
+      state.screen = 'distributing';
+      state.polls = 0;
+      renderDistributing();
+      pollStatus();
+    }).catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = 'Confirm & list everywhere';
+      document.getElementById('cerr').innerHTML =
+        err.status === 401 ? authBanner() : '<div class="alert error">' + esc(err.message) + '</div>';
+    });
+  }
 
-  render();
+  /* ---------------- screen 4: distribution progress ---------------- */
+
+  function statusMeta(s) {
+    switch ((s && s.status) || null) {
+      case 'listed': return { cls: 'listed', label: 'Listed' };
+      case 'pending': return { cls: 'queued', label: 'Queued' };
+      case 'guided': return { cls: 'guided', label: 'Guided setup' };
+      case 'needsReview': return { cls: 'review', label: 'Needs review' };
+      case 'failed': return { cls: 'failed', label: 'Failed' };
+      default: return { cls: 'working', label: 'Working…' };
+    }
+  }
+  function marketById(id) {
+    for (var i = 0; i < MARKETS.length; i++) if (MARKETS[i].id === id) return MARKETS[i];
+    return { id: id, label: id, initial: id.slice(0, 1).toUpperCase() };
+  }
+  function statusFor(id) {
+    for (var i = 0; i < state.statuses.length; i++) {
+      if (state.statuses[i].marketplace === id) return state.statuses[i];
+    }
+    return null;
+  }
+
+  function renderDistributing() {
+    setStep('distributing');
+    var cards = MARKETS.map(function (m) {
+      var s = statusFor(m.id);
+      var meta = statusMeta(s);
+      var sub = '';
+      if (s && s.status === 'listed' && s.url) sub = '<a class="view" href="' + esc(s.url) + '" target="_blank" rel="noopener">View listing →</a>';
+      else if (s && s.status === 'listed') sub = 'Your item is live.';
+      else if (s && s.status === 'pending') sub = 'Queued — the helper will pick it up.';
+      else if (s && s.status === 'guided') sub = 'Needs a quick manual step on the site.';
+      else if (s && s.status === 'needsReview') sub = 'Finished, but flagged for your review.';
+      var err = (s && s.status === 'failed' && s.error) ? '<div class="err">' + esc(s.error) + '</div>' : '';
+      return '<div class="mkt"><div class="logo">' + esc(m.initial) + '</div>' +
+        '<div><div class="nm">' + esc(m.label) + '</div><div class="st">' + sub + '</div>' + err + '</div>' +
+        '<span class="pill ' + meta.cls + '">' + meta.label + '</span></div>';
+    }).join('');
+
+    var done = state.statuses.length === MARKETS.length &&
+      state.statuses.every(function (s) { return s.status && s.status !== null; });
+    var listed = state.statuses.filter(function (s) { return s.status === 'listed'; }).length;
+
+    screen.innerHTML =
+      '<div class="dist-head"><h2>' + (done ? (listed ? 'It\'s live!' : 'Distribution finished') : 'Listing everywhere…') + '</h2>' +
+      '<p>' + esc(displayName(state.identity)) + ' · ' + money(state.price) + '</p></div>' +
+      '<div class="mkts">' + cards + '</div>' +
+      (done ? '<div class="actions"><button class="go ghost" id="another" type="button">List another item</button> ' +
+        '<a class="go" href="/dashboard.html#items" style="text-decoration:none">See my items</a></div>'
+        : '<div class="fine">Posting to each marketplace — this usually takes under a minute.</div>');
+    var another = document.getElementById('another');
+    if (another) another.addEventListener('click', resetAll);
+  }
+
+  /* -------- Facebook extension relay --------
+     Facebook has no listing API: the server queues distribution jobs and this
+     page relays them to the Crosslist Connector Chrome extension, which fills
+     in and publishes the listing in the user's logged-in Facebook session.
+     Runs while the distribution screen is open and Facebook is still queued. */
+  var fbRelaying = false;
+  function hasExtBridge() {
+    return Boolean(document.documentElement.dataset.crosslistExtensionId);
+  }
+  function extRequest(command, payload) {
+    return new Promise(function (resolve, reject) {
+      if (!hasExtBridge()) { reject(new Error('extension-missing')); return; }
+      var requestId = 'fb-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
+      var timer = setTimeout(function () {
+        window.removeEventListener('message', handler);
+        reject(new Error('extension-timeout'));
+      }, 120000);
+      function handler(event) {
+        if (event.origin !== window.location.origin) return;
+        var d = event.data;
+        if (!d || d.type !== 'CROSSLIST_EXT_RESPONSE' || d.requestId !== requestId) return;
+        clearTimeout(timer);
+        window.removeEventListener('message', handler);
+        if (d.response && d.response.error) reject(new Error(String(d.response.error)));
+        else resolve(d.response || {});
+      }
+      window.addEventListener('message', handler);
+      window.postMessage({ type: 'CROSSLIST_EXT_REQUEST', requestId: requestId, command: command, payload: payload }, window.location.origin);
+    });
+  }
+  function fbApi(path, options) {
+    return fetch(path, options).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw new Error((data && data.error) || ('Request failed: ' + res.status));
+        return data;
+      });
+    });
+  }
+  function fbRelayCycle() {
+    if (fbRelaying || state.screen !== 'distributing') return;
+    var fb = statusFor('facebook');
+    if (!fb || fb.status !== 'pending') return;
+    fbRelaying = true;
+    fbApi('/api/facebook/jobs/pending').then(function (data) {
+      var jobs = (data && data.jobs) || [];
+      var chain = Promise.resolve();
+      jobs.forEach(function (job) {
+        chain = chain.then(function () {
+          var jobId = job.jobId || job.id;
+          return fbApi('/api/facebook/jobs/claim', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobId: jobId })
+          }).then(function (claimed) {
+            var fullJob = (claimed && claimed.job) || job;
+            return extRequest('CREATE_FACEBOOK_LISTING', { job: fullJob, dashboardOrigin: window.location.origin })
+              .catch(function (err) { return { success: false, error: String((err && err.message) || err) }; });
+          }).then(function (result) {
+            return fbApi('/api/facebook/jobs/result', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jobId: jobId, result: result || {} })
+            }).catch(function () {});
+          }).catch(function () {});
+        });
+      });
+      return chain;
+    }).catch(function () {}).then(function () { fbRelaying = false; });
+  }
+
+  function pollStatus() {
+    if (state.screen !== 'distributing') return;
+    if (state.polls++ > 40) return; // ~100s cap; statuses persist server-side
+    fetch('/api/auto-list/' + encodeURIComponent(state.jobId) + '/status')
+      .then(function (res) { return res.json().catch(function () { return {}; }); })
+      .then(function (data) {
+        if (state.screen !== 'distributing') return;
+        if (Array.isArray(data.statuses) && data.statuses.length) {
+          state.statuses = data.statuses;
+          renderDistributing();
+        }
+        fbRelayCycle(); // relay any queued Facebook jobs through the Chrome helper
+        var done = state.statuses.length === MARKETS.length &&
+          state.statuses.every(function (s) { return s.status; });
+        if (!done) setTimeout(pollStatus, 2500);
+      })
+      .catch(function () { setTimeout(pollStatus, 5000); });
+  }
+
+  function resetAll() {
+    state.photos = []; state.uploading = 0; state.jobId = null;
+    state.identity = null; state.price = null; state.comps = [];
+    state.rationale = ''; state.confidence = null; state.statuses = [];
+    state.screen = 'photos';
+    renderPhotos();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  renderPhotos();
 })();
 </script>
 </body>

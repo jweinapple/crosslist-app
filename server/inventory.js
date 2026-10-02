@@ -235,16 +235,6 @@ function toUnifiedListing(listing) {
   };
 }
 
-function facebookPushListing(listing) {
-  const fb = getPlatforms(listing).facebook;
-  if (!fb?.listingId) return null;
-  return {
-    id: listing.id,
-    price: listing.price,
-    platformListingId: fb.listingId,
-  };
-}
-
 function findExistingListing(incoming) {
   if (incoming?.id && listings.has(incoming.id)) {
     return listings.get(incoming.id);
@@ -1275,7 +1265,6 @@ export {
   getPlatforms,
   listingHasPlatform,
   toUnifiedListing,
-  facebookPushListing,
   findExistingListing,
   IMAGE_QUERY_DROP,
   normalizeImageUrl,

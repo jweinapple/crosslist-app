@@ -557,9 +557,9 @@ function findImageMatchInInventory(incoming, platform) {
   return best;
 }
 
-function findImageMatchGroups() {
+async function findImageMatchGroups() {
   const items = Array.from(listings.values()).map((listing) => toUnifiedListing(listing));
-  const dismissed = new Set(userStore.listImageMatchDismissals(getCurrentUser()?.id));
+  const dismissed = new Set(await userStore.listImageMatchDismissals(getCurrentUser()?.id));
   const parent = new Map(items.map((item) => [item.id, item.id]));
 
   function find(id) {

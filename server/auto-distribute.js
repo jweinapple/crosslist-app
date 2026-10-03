@@ -70,11 +70,11 @@ const MARKETPLACE_LABELS = {
 };
 
 // ---------------------------------------------------------------------------
-// Persistence (follows server/db.js patterns: DatabaseSync + CREATE TABLE IF
+// Persistence (follows server/db.js patterns: async db adapter + CREATE TABLE IF
 // NOT EXISTS at module load, JSON columns for structured data)
 // ---------------------------------------------------------------------------
 
-db.exec(`
+await db.exec(`
   CREATE TABLE IF NOT EXISTS auto_list_jobs (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -86,9 +86,9 @@ db.exec(`
     price_json TEXT,
     status_json TEXT NOT NULL DEFAULT '{}',
     error TEXT
-  );
-  CREATE INDEX IF NOT EXISTS idx_auto_list_jobs_user ON auto_list_jobs(user_id);
+  )
 `);
+await db.exec('CREATE INDEX IF NOT EXISTS idx_auto_list_jobs_user ON auto_list_jobs(user_id)');
 
 function nowIso() {
   return new Date().toISOString();
@@ -120,21 +120,27 @@ function rowToJob(row) {
   };
 }
 
-function createJobRow({ id, userId, photos }) {
+async function createJobRow({ id, userId, photos }) {
   const created = nowIso();
-  db.prepare(
+  await db.run(
     `INSERT INTO auto_list_jobs (id, user_id, created_at, updated_at, stage, photos_json, status_json)
-     VALUES (?, ?, ?, ?, 'identifying', ?, '{}')`
-  ).run(id, userId, created, created, JSON.stringify(photos || []));
+     VALUES (?, ?, ?, ?, 'identifying', ?, '{}')`,
+    id,
+    userId,
+    created,
+    created,
+    JSON.stringify(photos || [])
+  );
   return getJobRow(id);
 }
 
-function getJobRow(jobId) {
+async function getJobRow(jobId) {
   if (!jobId) return null;
-  return rowToJob(db.prepare('SELECT * FROM auto_list_jobs WHERE id = ?').get(String(jobId)));
+  const row = await db.get('SELECT * FROM auto_list_jobs WHERE id = ?', String(jobId));
+  return rowToJob(row);
 }
 
-function updateJobRow(jobId, patch) {
+async function updateJobRow(jobId, patch) {
   const sets = [];
   const args = [];
   if (patch.stage !== undefined) {
@@ -160,7 +166,7 @@ function updateJobRow(jobId, patch) {
   sets.push('updated_at = ?');
   args.push(nowIso());
   args.push(String(jobId));
-  db.prepare(`UPDATE auto_list_jobs SET ${sets.join(', ')} WHERE id = ?`).run(...args);
+  await db.run(`UPDATE auto_list_jobs SET ${sets.join(', ')} WHERE id = ?`, ...args);
   return getJobRow(jobId);
 }
 
@@ -262,9 +268,12 @@ async function loadPhotoIntel() {
 }
 
 // ---------------------------------------------------------------------------
-// Photo paths: reuse the existing UPLOADS_DIR storage.
-// Accepts '/uploads/<owner>/<file>' URLs (as returned by POST /api/uploads)
-// or absolute filesystem paths inside the data dir.
+// Photo paths: reuse the existing UPLOADS_DIR storage (local mode) or
+// accept absolute https photo URLs (Vercel Blob mode).
+// Accepts '/uploads/<owner>/<file>' URLs (as returned by POST /api/uploads),
+// https:// URLs (as returned by POST /api/uploads when BLOB_READ_WRITE_TOKEN
+// is set — they are already absolute, which is what the extension listing
+// payloads need), or absolute filesystem paths inside the data dir.
 // ---------------------------------------------------------------------------
 
 function uploadsDir() {
@@ -286,11 +295,14 @@ export function resolveAutoListPhotos(photos, baseUrl = '') {
         throw httpError(400, `Photo path is outside the uploads directory: ${value}`);
       }
       url = origin ? `${origin}${value}` : value;
-    } else if (/^https?:\/\//i.test(value)) {
-      throw httpError(
-        400,
-        `Remote photo URLs are not supported by the auto-list flow; upload the photo first: ${value.slice(0, 80)}`
-      );
+    } else if (/^https:\/\//i.test(value)) {
+      // Vercel Blob photo: already an absolute URL with nothing on local
+      // disk to validate. The extension listing payloads consume the URL
+      // directly; photo-intel fetches the bytes from the URL when needed.
+      out.push({ path: value, url: value });
+      continue;
+    } else if (/^http:\/\//i.test(value)) {
+      throw httpError(400, `Only https photo URLs are accepted by the auto-list flow: ${value.slice(0, 80)}`);
     } else {
       fsPath = path.normalize(path.resolve(value));
       if (!fsPath.startsWith(path.resolve(DATA_DIR) + path.sep)) {
@@ -380,7 +392,7 @@ export function identityDisplayName(identity) {
 // Failure recording via the existing server/listing-failures.js system
 // ---------------------------------------------------------------------------
 
-function recordAutoListFailure(userId, { marketplace, title, error }) {
+async function recordAutoListFailure(userId, { marketplace, title, error }) {
   if (!userId) return;
   const failure = sanitizeListingFailure({
     at: nowIso(),
@@ -391,9 +403,9 @@ function recordAutoListFailure(userId, { marketplace, title, error }) {
     source: 'server',
   });
   if (!failure) return;
-  if (failure.id && hasListingFailure(userId, failure.id)) return;
+  if (failure.id && (await hasListingFailure(userId, failure.id))) return;
   try {
-    appendActivity(userId, {
+    await appendActivity(userId, {
       type: 'error',
       source: 'auto-list',
       message: `${marketplaceLabel(marketplace)} auto-list failed for "${failure.title}": ${failure.error}`,
@@ -424,11 +436,11 @@ export async function startAutoList(photos, ctx = {}) {
   if (!resolved.length) throw httpError(400, 'Upload at least one photo to start');
 
   const jobId = `auto_${uuidv4()}`;
-  createJobRow({ id: jobId, userId: user.id, photos: resolved });
+  await createJobRow({ id: jobId, userId: user.id, photos: resolved });
 
   const intel = await loadPhotoIntel();
   if (intel.error) {
-    updateJobRow(jobId, { stage: 'failed', error: intel.error });
+    await updateJobRow(jobId, { stage: 'failed', error: intel.error });
     const error = httpError(503, intel.error);
     error.jobId = jobId;
     throw error;
@@ -439,7 +451,7 @@ export async function startAutoList(photos, ctx = {}) {
     const identity = sanitizeIdentity(rawIdentity);
     const rawPricing = await intel.suggestPrice(identity);
     const pricing = sanitizePrice(rawPricing);
-    updateJobRow(jobId, {
+    await updateJobRow(jobId, {
       stage: 'awaiting_confirmation',
       identity,
       price: pricing,
@@ -455,7 +467,7 @@ export async function startAutoList(photos, ctx = {}) {
     };
   } catch (error) {
     const message = error?.message || 'Photo analysis failed';
-    updateJobRow(jobId, { stage: 'failed', error: message });
+    await updateJobRow(jobId, { stage: 'failed', error: message });
     if (error?.status) throw error;
     const wrapped = httpError(502, `Photo analysis failed: ${message}`);
     wrapped.jobId = jobId;
@@ -563,7 +575,7 @@ async function runDistributor(marketplace, payload, ctx, job) {
 export async function confirmAutoList(jobId, { identity, price } = {}, ctx = {}) {
   const user = ctx.user;
   if (!user?.id) throw httpError(401, 'Sign in required');
-  const job = getJobRow(jobId);
+  const job = await getJobRow(jobId);
   if (!job) throw httpError(404, 'Auto-list job not found');
   if (job.userId !== user.id) throw httpError(403, 'This auto-list job belongs to another account');
   if (job.stage !== 'awaiting_confirmation') {
@@ -578,7 +590,7 @@ export async function confirmAutoList(jobId, { identity, price } = {}, ctx = {})
   const finalIdentity = sanitizeIdentity(identity ?? job.identity);
   const finalPrice = sanitizePrice(price ?? job.price);
 
-  updateJobRow(jobId, { stage: 'distributing', identity: finalIdentity, price: finalPrice });
+  await updateJobRow(jobId, { stage: 'distributing', identity: finalIdentity, price: finalPrice });
 
   const payload = buildDistributorPayload(finalIdentity, finalPrice, job);
   const distCtx = buildDistributorCtx(ctx);
@@ -588,16 +600,16 @@ export async function confirmAutoList(jobId, { identity, price } = {}, ctx = {})
     const record = await runDistributor(marketplace, payload, distCtx, job);
     statuses[marketplace] = record;
     if (record.status === 'failed') {
-      recordAutoListFailure(user.id, {
+      await recordAutoListFailure(user.id, {
         marketplace,
         title: identityDisplayName(finalIdentity),
         error: record.error,
       });
     }
-    updateJobRow(jobId, { statuses });
+    await updateJobRow(jobId, { statuses });
   }
 
-  updateJobRow(jobId, { stage: 'done' });
+  await updateJobRow(jobId, { stage: 'done' });
   return {
     jobId,
     statuses: AUTO_LIST_MARKETPLACES.map((marketplace) => statuses[marketplace]),
@@ -607,10 +619,10 @@ export async function confirmAutoList(jobId, { identity, price } = {}, ctx = {})
 /**
  * Step 3 — read the current per-marketplace status of a job.
  */
-export function getAutoListStatus(jobId, ctx = {}) {
+export async function getAutoListStatus(jobId, ctx = {}) {
   const user = ctx.user;
   if (!user?.id) throw httpError(401, 'Sign in required');
-  const job = getJobRow(jobId);
+  const job = await getJobRow(jobId);
   if (!job) throw httpError(404, 'Auto-list job not found');
   if (job.userId !== user.id) throw httpError(403, 'This auto-list job belongs to another account');
   return {
@@ -639,10 +651,10 @@ export function getAutoListStatus(jobId, ctx = {}) {
  * error?, needsReview? }. Only extension-reported outcomes may overwrite a
  * record, and a 'listed' record is never downgraded by a later report.
  */
-export function recordExtensionResults(jobId, results = [], ctx = {}) {
+export async function recordExtensionResults(jobId, results = [], ctx = {}) {
   const user = ctx.user;
   if (!user?.id) throw httpError(401, 'Sign in required');
-  const job = getJobRow(jobId);
+  const job = await getJobRow(jobId);
   if (!job) throw httpError(404, 'Auto-list job not found');
   if (job.userId !== user.id) throw httpError(403, 'This auto-list job belongs to another account');
   const statuses = { ...(job.statuses || {}) };
@@ -654,14 +666,14 @@ export function recordExtensionResults(jobId, results = [], ctx = {}) {
     if (current?.status === 'listed' && normalized.status !== 'listed') continue;
     statuses[marketplace] = { ...current, ...normalized };
     if (normalized.status === 'failed') {
-      recordAutoListFailure(user.id, {
+      await recordAutoListFailure(user.id, {
         marketplace,
         title: identityDisplayName(job.identity),
         error: normalized.error,
       });
     }
   }
-  updateJobRow(jobId, { statuses });
+  await updateJobRow(jobId, { statuses });
   return {
     jobId,
     statuses: AUTO_LIST_MARKETPLACES.map((marketplace) => statuses[marketplace]),
@@ -669,6 +681,6 @@ export function recordExtensionResults(jobId, results = [], ctx = {}) {
 }
 
 /** @internal — test/helper only: wipe auto-list jobs for a user */
-export function __deleteAutoListJobsForUser(userId) {
-  db.prepare('DELETE FROM auto_list_jobs WHERE user_id = ?').run(String(userId));
+export async function __deleteAutoListJobsForUser(userId) {
+  await db.run('DELETE FROM auto_list_jobs WHERE user_id = ?', String(userId));
 }

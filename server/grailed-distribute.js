@@ -28,7 +28,7 @@ const GRAILED_SELL_URL = 'https://www.grailed.com/sell/new';
 // Table mirrors the CREATE TABLE IF NOT EXISTS pattern in server/db.js.
 // (Coordinator: this table could move into db.js's schema block later; the
 // idempotent CREATE here means db.js is not required to change for this to work.)
-db.exec(`
+await db.exec(`
   CREATE TABLE IF NOT EXISTS grailed_jobs (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -37,18 +37,17 @@ db.exec(`
     title TEXT,
     price REAL,
     payload_json TEXT NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_grailed_jobs_user ON grailed_jobs(user_id, created_at);
+  )
 `);
+await db.exec('CREATE INDEX IF NOT EXISTS idx_grailed_jobs_user ON grailed_jobs(user_id, created_at)');
 
 // Default persistence layer; tests override with __setJobStore() so they
 // never touch the real sqlite file.
 const jobStore = {
-  insert(job) {
-    db.prepare(
+  async insert(job) {
+    await db.run(
       `INSERT INTO grailed_jobs (id, user_id, created_at, status, title, price, payload_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       job.id,
       job.user_id,
       job.created_at,
@@ -59,8 +58,8 @@ const jobStore = {
     );
     return job.id;
   },
-  get(id) {
-    const row = db.prepare('SELECT * FROM grailed_jobs WHERE id = ?').get(id);
+  async get(id) {
+    const row = await db.get('SELECT * FROM grailed_jobs WHERE id = ?', id);
     if (!row) return null;
     return { ...row, payload: JSON.parse(row.payload_json) };
   },
@@ -208,7 +207,7 @@ export async function distribute(
     price: amount,
     payload,
   };
-  jobStore.insert(job);
+  await jobStore.insert(job);
 
   return {
     ok: true,
@@ -222,6 +221,6 @@ export async function distribute(
 }
 
 /** Read back a queued job (used by the extension handoff / dashboard status). */
-export function getJob(jobId) {
+export async function getJob(jobId) {
   return jobStore.get(String(jobId || ''));
 }

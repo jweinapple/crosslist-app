@@ -287,18 +287,42 @@ function extOf(photoPath) {
   return path.extname(String(photoPath)).toLowerCase();
 }
 
-/** Read a photo file and return a data: URL the vision API can consume. */
+/**
+ * Read a photo and return a data: URL the vision API can consume.
+ * Accepts a local file path or an http(s) URL (e.g. a Vercel Blob photo —
+ * resolveAutoListPhotos passes Blob URLs through, and the bytes are fetched
+ * here so the vision step works with no local disk).
+ */
 export async function loadPhotoAsDataUrl(photoPath) {
-  const buffer = await readFile(photoPath).catch((err) => {
-    throw new VisionProviderError('openai', `Cannot read photo "${photoPath}": ${err.message}`, err);
-  });
+  const source = String(photoPath || '');
+  let buffer;
+  let headerMime = '';
+  if (/^https?:\/\//i.test(source)) {
+    let res;
+    try {
+      res = await axios.get(source, {
+        responseType: 'arraybuffer',
+        maxBodyLength: MAX_PHOTO_BYTES + 1,
+        maxContentLength: MAX_PHOTO_BYTES + 1,
+        timeout: 30000,
+      });
+    } catch (err) {
+      throw new VisionProviderError('openai', `Cannot fetch photo "${source}": ${err.message}`, err);
+    }
+    buffer = Buffer.from(res.data);
+    headerMime = String(res.headers?.['content-type'] || '').split(';')[0].trim().toLowerCase();
+  } else {
+    buffer = await readFile(source).catch((err) => {
+      throw new VisionProviderError('openai', `Cannot read photo "${source}": ${err.message}`, err);
+    });
+  }
   if (buffer.length > MAX_PHOTO_BYTES) {
     throw new VisionProviderError(
       'openai',
-      `Photo "${photoPath}" is ${(buffer.length / 1048576).toFixed(1)}MB; keep photos under 10MB.`
+      `Photo "${source}" is ${(buffer.length / 1048576).toFixed(1)}MB; keep photos under 10MB.`
     );
   }
-  const ext = extOf(photoPath);
+  const ext = extOf(source.split(/[?#]/)[0]);
   if (CONVERTIBLE_EXT.has(ext)) {
     // iPhone uploads may be HEIC; convert to JPEG for vision APIs.
     let convert;
@@ -307,18 +331,19 @@ export async function loadPhotoAsDataUrl(photoPath) {
     } catch (err) {
       throw new VisionProviderError(
         'openai',
-        `Photo "${photoPath}" is HEIC but heic-convert is unavailable. Export it as JPEG and try again.`,
+        `Photo "${source}" is HEIC but heic-convert is unavailable. Export it as JPEG and try again.`,
         err
       );
     }
     const jpeg = await convert({ buffer, format: 'JPEG', quality: 0.92 });
     return `data:image/jpeg;base64,${Buffer.from(jpeg).toString('base64')}`;
   }
-  const mime = MIME_BY_EXT[ext];
+  const knownHeaderMime = Object.values(MIME_BY_EXT).includes(headerMime) ? headerMime : '';
+  const mime = MIME_BY_EXT[ext] || knownHeaderMime;
   if (!mime) {
     throw new VisionProviderError(
       'openai',
-      `Photo "${photoPath}" has unsupported extension "${ext || '(none)'}". ` +
+      `Photo "${source}" has unsupported extension "${ext || '(none)'}". ` +
         `Supported: ${[...Object.keys(MIME_BY_EXT), ...CONVERTIBLE_EXT].join(', ')}.`
     );
   }

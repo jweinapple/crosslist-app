@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { DatabaseSync } from 'node:sqlite';
+import { createClient } from '@libsql/client';
 import { v4 as uuidv4 } from 'uuid';
 
 const scrypt = promisify(crypto.scrypt);
@@ -24,14 +25,81 @@ export const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const OAUTH_STATE_MS = 15 * 60 * 1000;
 export const PLATFORMS = ['ebay', 'facebook', 'depop', 'poshmark', 'etsy', 'reverb'];
 
-fs.mkdirSync(DATA_DIR, { recursive: true });
+// ---------------------------------------------------------------------------
+// Persistence backend: Turso (libSQL) when TURSO_DATABASE_URL +
+// TURSO_AUTH_TOKEN are set, otherwise the zero-config local node:sqlite file.
+// Both backends expose the same async adapter:
+//
+//   db.get(sql, ...args) -> row object | undefined
+//   db.all(sql, ...args) -> row object[]
+//   db.run(sql, ...args) -> { changes, lastInsertRowid }
+//   db.exec(sql)         -> run a statement, no result rows
+//   db.close()           -> release the underlying connection
+//   db.isRemote          -> true when talking to Turso
+//
+// `?` placeholders are supported on both, so existing SQL transfers unchanged.
+// ---------------------------------------------------------------------------
 
-export const db = new DatabaseSync(DB_PATH);
-db.exec(`
-  PRAGMA foreign_keys = ON;
-  PRAGMA journal_mode = WAL;
+const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL || '';
+const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN || '';
+const USE_TURSO = Boolean(TURSO_DATABASE_URL && TURSO_AUTH_TOKEN);
 
-  CREATE TABLE IF NOT EXISTS users (
+function createLocalDb() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const sqlite = new DatabaseSync(DB_PATH);
+  return {
+    isRemote: false,
+    async get(sql, ...args) {
+      return sqlite.prepare(sql).get(...args) ?? undefined;
+    },
+    async all(sql, ...args) {
+      return sqlite.prepare(sql).all(...args);
+    },
+    async run(sql, ...args) {
+      const info = sqlite.prepare(sql).run(...args);
+      return { changes: Number(info.changes), lastInsertRowid: info.lastInsertRowid };
+    },
+    async exec(sql) {
+      sqlite.exec(sql);
+    },
+    close() {
+      sqlite.close();
+    },
+  };
+}
+
+function createTursoDb() {
+  const client = createClient({ url: TURSO_DATABASE_URL, authToken: TURSO_AUTH_TOKEN });
+  return {
+    isRemote: true,
+    async get(sql, ...args) {
+      const result = await client.execute({ sql, args });
+      return result.rows[0] ?? undefined;
+    },
+    async all(sql, ...args) {
+      const result = await client.execute({ sql, args });
+      return result.rows;
+    },
+    async run(sql, ...args) {
+      const result = await client.execute({ sql, args });
+      return { changes: Number(result.rowsAffected), lastInsertRowid: result.lastInsertRowid };
+    },
+    async exec(sql) {
+      await client.execute(sql);
+    },
+    close() {
+      client.close();
+    },
+  };
+}
+
+export const db = USE_TURSO ? createTursoDb() : createLocalDb();
+
+// DDL is issued one statement at a time: libsql executes a single statement
+// per call, while node:sqlite tolerates the same loop. PRAGMAs are
+// local-only (they are meaningless on the remote path).
+const SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
@@ -39,17 +107,15 @@ db.exec(`
     google_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS sessions (
+  )`,
+  `CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     expires_at INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS connections (
+  )`,
+  `CREATE TABLE IF NOT EXISTS connections (
     user_id TEXT NOT NULL,
     platform TEXT NOT NULL,
     mode TEXT,
@@ -61,41 +127,35 @@ db.exec(`
     updated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, platform),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS listings (
+  )`,
+  `CREATE TABLE IF NOT EXISTS listings (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     data_json TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS oauth_states (
+  )`,
+  `CREATE TABLE IF NOT EXISTS oauth_states (
     state TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     platform TEXT NOT NULL,
     extra_json TEXT,
     created_at INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS meta (
+  )`,
+  `CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-  CREATE INDEX IF NOT EXISTS idx_listings_user ON listings(user_id);
-
-  CREATE TABLE IF NOT EXISTS image_match_dismissals (
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_listings_user ON listings(user_id)',
+  `CREATE TABLE IF NOT EXISTS image_match_dismissals (
     user_id TEXT NOT NULL,
     pair_key TEXT NOT NULL,
     created_at TEXT NOT NULL,
     PRIMARY KEY (user_id, pair_key),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS activity_logs (
+  )`,
+  `CREATE TABLE IF NOT EXISTS activity_logs (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -104,19 +164,30 @@ db.exec(`
     message TEXT NOT NULL,
     detail_json TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_activity_user_created ON activity_logs(user_id, created_at)',
+];
 
-  CREATE INDEX IF NOT EXISTS idx_activity_user_created ON activity_logs(user_id, created_at);
-`);
-
-function tableHasColumn(table, column) {
-  return db.prepare(`PRAGMA table_info(${table})`).all().some((row) => row.name === column);
+async function tableHasColumn(table, column) {
+  const rows = await db.all(`PRAGMA table_info(${table})`);
+  return rows.some((row) => row.name === column);
 }
 
-if (!tableHasColumn('users', 'google_id')) {
-  db.exec('ALTER TABLE users ADD COLUMN google_id TEXT');
+async function initDatabase() {
+  if (!db.isRemote) {
+    await db.exec('PRAGMA foreign_keys = ON;');
+    await db.exec('PRAGMA journal_mode = WAL;');
+  }
+  for (const statement of SCHEMA_STATEMENTS) {
+    await db.exec(statement);
+  }
+  if (!(await tableHasColumn('users', 'google_id'))) {
+    await db.exec('ALTER TABLE users ADD COLUMN google_id TEXT');
+  }
+  await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)');
 }
-db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)');
+
+await initDatabase();
 
 function nowIso() {
   return new Date().toISOString();
@@ -198,12 +269,13 @@ export function unsignValue(token, maxAgeMs) {
   }
 }
 
-function googleIdForUser(userId) {
+async function googleIdForUser(userId) {
   if (!userId) return '';
-  return db.prepare('SELECT google_id FROM users WHERE id = ?').get(userId)?.google_id || '';
+  const row = await db.get('SELECT google_id FROM users WHERE id = ?', userId);
+  return row?.google_id || '';
 }
 
-export function setSessionCookie(res, sessionId, user) {
+export async function setSessionCookie(res, sessionId, user) {
   res.append(
     'Set-Cookie',
     `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; ${cookieSecurity()}; Max-Age=${Math.floor(SESSION_MS / 1000)}`
@@ -213,7 +285,7 @@ export function setSessionCookie(res, sessionId, user) {
     id: user.id,
     email: user.email,
     name: user.name || '',
-    google_id: user.google_id || googleIdForUser(user.id),
+    google_id: user.google_id || (await googleIdForUser(user.id)),
     t: Date.now(),
   });
   res.append(
@@ -227,18 +299,19 @@ export function clearSessionCookie(res) {
   res.append('Set-Cookie', `${IDENTITY_COOKIE}=; ${cookieSecurity()}; Max-Age=0`);
 }
 
-export function restoreUserFromIdentityCookie(cookies) {
+export async function restoreUserFromIdentityCookie(cookies) {
   const payload = unsignValue(cookies?.[IDENTITY_COOKIE], SESSION_MS);
   if (!payload?.id || !payload?.email) return null;
-  const existing = loadUser(payload.id);
+  const existing = await loadUser(payload.id);
   if (existing) return existing;
   if (!payload.google_id) return null;
   try {
-    return findOrCreateGoogleUser({
+    const { user } = await findOrCreateGoogleUser({
       googleId: payload.google_id,
       email: payload.email,
       name: payload.name || '',
-    }).user;
+    });
+    return user;
   } catch {
     return null;
   }
@@ -382,38 +455,35 @@ function extractConnection(user, platform) {
   return null;
 }
 
-export function loadUser(userId) {
-  const row = db.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?').get(userId);
+export async function loadUser(userId) {
+  const row = await db.get('SELECT id, email, name, created_at FROM users WHERE id = ?', userId);
   if (!row) return null;
   const user = publicUser(row);
-  const connections = db.prepare('SELECT * FROM connections WHERE user_id = ?').all(userId);
+  const connections = await db.all('SELECT * FROM connections WHERE user_id = ?', userId);
   for (const connection of connections) applyConnection(user, connection);
   return user;
 }
 
-export function saveUser(user) {
+export async function saveUser(user) {
   if (!user?.id) return;
-  db.prepare('UPDATE users SET name = ?, updated_at = ? WHERE id = ?').run(user.name || '', nowIso(), user.id);
-  const upsert = db.prepare(`
-    INSERT INTO connections (user_id, platform, mode, access_token, refresh_token, token_expires, account, extra_json, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id, platform) DO UPDATE SET
-      mode = excluded.mode,
-      access_token = excluded.access_token,
-      refresh_token = excluded.refresh_token,
-      token_expires = excluded.token_expires,
-      account = excluded.account,
-      extra_json = excluded.extra_json,
-      updated_at = excluded.updated_at
-  `);
-  const remove = db.prepare('DELETE FROM connections WHERE user_id = ? AND platform = ?');
+  await db.run('UPDATE users SET name = ?, updated_at = ? WHERE id = ?', user.name || '', nowIso(), user.id);
   for (const platform of PLATFORMS) {
     const payload = extractConnection(user, platform);
     if (!payload) {
-      remove.run(user.id, platform);
+      await db.run('DELETE FROM connections WHERE user_id = ? AND platform = ?', user.id, platform);
       continue;
     }
-    upsert.run(
+    await db.run(
+      `INSERT INTO connections (user_id, platform, mode, access_token, refresh_token, token_expires, account, extra_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, platform) DO UPDATE SET
+         mode = excluded.mode,
+         access_token = excluded.access_token,
+         refresh_token = excluded.refresh_token,
+         token_expires = excluded.token_expires,
+         account = excluded.account,
+         extra_json = excluded.extra_json,
+         updated_at = excluded.updated_at`,
       user.id,
       platform,
       payload.mode,
@@ -427,9 +497,9 @@ export function saveUser(user) {
   }
 }
 
-export function loadListings(userId) {
+export async function loadListings(userId) {
   const map = new Map();
-  const rows = db.prepare('SELECT id, data_json FROM listings WHERE user_id = ?').all(userId);
+  const rows = await db.all('SELECT id, data_json FROM listings WHERE user_id = ?', userId);
   for (const row of rows) {
     try {
       const listing = JSON.parse(row.data_json);
@@ -441,83 +511,97 @@ export function loadListings(userId) {
   return map;
 }
 
-export function upsertListing(userId, listing) {
+export async function upsertListing(userId, listing) {
   if (!userId || !listing?.id) return;
-  db.prepare(`
-    INSERT INTO listings (id, user_id, data_json, updated_at)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      data_json = excluded.data_json,
-      updated_at = excluded.updated_at
-  `).run(listing.id, userId, JSON.stringify(listing), nowIso());
+  await db.run(
+    `INSERT INTO listings (id, user_id, data_json, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       data_json = excluded.data_json,
+       updated_at = excluded.updated_at`,
+    listing.id,
+    userId,
+    JSON.stringify(listing),
+    nowIso()
+  );
 }
 
-export function deleteListing(userId, listingId) {
-  db.prepare('DELETE FROM listings WHERE user_id = ? AND id = ?').run(userId, listingId);
+export async function deleteListing(userId, listingId) {
+  await db.run('DELETE FROM listings WHERE user_id = ? AND id = ?', userId, listingId);
 }
 
-export function saveListings(userId, listingsMap) {
+export async function saveListings(userId, listingsMap) {
   if (!userId || !listingsMap) return;
-  const persist = db.transaction(() => {
-    db.prepare('DELETE FROM listings WHERE user_id = ?').run(userId);
-    const insert = db.prepare(
-      'INSERT INTO listings (id, user_id, data_json, updated_at) VALUES (?, ?, ?, ?)'
+  await db.run('DELETE FROM listings WHERE user_id = ?', userId);
+  for (const listing of listingsMap.values()) {
+    if (!listing?.id) continue;
+    await db.run(
+      'INSERT INTO listings (id, user_id, data_json, updated_at) VALUES (?, ?, ?, ?)',
+      listing.id,
+      userId,
+      JSON.stringify(listing),
+      nowIso()
     );
-    for (const listing of listingsMap.values()) {
-      if (!listing?.id) continue;
-      insert.run(listing.id, userId, JSON.stringify(listing), nowIso());
-    }
-  });
-  persist();
+  }
 }
 
 function wrapListingMap(userId, map) {
   const originalSet = map.set.bind(map);
   const originalDelete = map.delete.bind(map);
   const originalClear = map.clear.bind(map);
+  // Map's set/delete/clear stay synchronous; the DB write happens in the
+  // background so callers keep the same call shape as before.
   map.set = (key, value) => {
     const result = originalSet(key, value);
-    upsertListing(userId, value);
+    upsertListing(userId, value).catch((error) =>
+      console.warn('listingMapFor: background upsert failed:', error.message)
+    );
     return result;
   };
   map.delete = (key) => {
     const result = originalDelete(key);
-    if (result) deleteListing(userId, key);
+    if (result) {
+      deleteListing(userId, key).catch((error) =>
+        console.warn('listingMapFor: background delete failed:', error.message)
+      );
+    }
     return result;
   };
   map.clear = () => {
     originalClear();
-    db.prepare('DELETE FROM listings WHERE user_id = ?').run(userId);
+    db.run('DELETE FROM listings WHERE user_id = ?', userId).catch((error) =>
+      console.warn('listingMapFor: background clear failed:', error.message)
+    );
     return map;
   };
   return map;
 }
 
-export function listingMapFor(userId) {
-  return wrapListingMap(userId, loadListings(userId));
+export async function listingMapFor(userId) {
+  return wrapListingMap(userId, await loadListings(userId));
 }
 
 export function imageMatchPairKey(a, b) {
   return [String(a), String(b)].sort().join('::');
 }
 
-export function listImageMatchDismissals(userId) {
+export async function listImageMatchDismissals(userId) {
   if (!userId) return [];
-  return db
-    .prepare('SELECT pair_key FROM image_match_dismissals WHERE user_id = ?')
-    .all(userId)
-    .map((row) => row.pair_key);
+  const rows = await db.all('SELECT pair_key FROM image_match_dismissals WHERE user_id = ?', userId);
+  return rows.map((row) => row.pair_key);
 }
 
-export function dismissImageMatchPairs(userId, pairKeys) {
+export async function dismissImageMatchPairs(userId, pairKeys) {
   if (!userId || !pairKeys?.length) return;
-  const insert = db.prepare(
-    'INSERT OR IGNORE INTO image_match_dismissals (user_id, pair_key, created_at) VALUES (?, ?, ?)'
-  );
   const created = nowIso();
   for (const key of pairKeys) {
     if (!key) continue;
-    insert.run(userId, String(key), created);
+    await db.run(
+      'INSERT OR IGNORE INTO image_match_dismissals (user_id, pair_key, created_at) VALUES (?, ?, ?)',
+      userId,
+      String(key),
+      created
+    );
   }
 }
 
@@ -533,7 +617,7 @@ export async function createUser({ email, password, name }) {
     error.status = 400;
     throw error;
   }
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalized);
+  const existing = await db.get('SELECT id FROM users WHERE email = ?', normalized);
   if (existing) {
     const error = new Error('An account with that email already exists');
     error.status = 409;
@@ -541,16 +625,22 @@ export async function createUser({ email, password, name }) {
   }
   const id = uuidv4();
   const created = nowIso();
-  db.prepare(
-    'INSERT INTO users (id, email, password_hash, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(id, normalized, await hashPassword(password), String(name || '').trim(), created, created);
-  claimLegacyStore(id);
+  await db.run(
+    'INSERT INTO users (id, email, password_hash, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+    id,
+    normalized,
+    await hashPassword(password),
+    String(name || '').trim(),
+    created,
+    created
+  );
+  await claimLegacyStore(id);
   return loadUser(id);
 }
 
 export async function authenticateUser(email, password) {
   const normalized = String(email || '').trim().toLowerCase();
-  const row = db.prepare('SELECT * FROM users WHERE email = ?').get(normalized);
+  const row = await db.get('SELECT * FROM users WHERE email = ?', normalized);
   if (row && String(row.password_hash || '').startsWith('oauth:')) {
     const error = new Error('This account uses Google sign-in. Continue with Google instead.');
     error.status = 401;
@@ -564,7 +654,7 @@ export async function authenticateUser(email, password) {
   return loadUser(row.id);
 }
 
-export function findOrCreateGoogleUser({ googleId, email, name }) {
+export async function findOrCreateGoogleUser({ googleId, email, name }) {
   const sub = String(googleId || '').trim();
   const normalized = String(email || '').trim().toLowerCase();
   if (!sub) {
@@ -578,19 +668,14 @@ export function findOrCreateGoogleUser({ googleId, email, name }) {
     throw error;
   }
 
-  const byGoogle = db.prepare('SELECT * FROM users WHERE google_id = ?').get(sub);
+  const byGoogle = await db.get('SELECT * FROM users WHERE google_id = ?', sub);
   if (byGoogle) {
     const nextName = String(name || '').trim() || byGoogle.name || '';
-    db.prepare('UPDATE users SET email = ?, name = ?, updated_at = ? WHERE id = ?').run(
-      normalized,
-      nextName,
-      nowIso(),
-      byGoogle.id
-    );
-    return { user: loadUser(byGoogle.id), created: false };
+    await db.run('UPDATE users SET email = ?, name = ?, updated_at = ? WHERE id = ?', normalized, nextName, nowIso(), byGoogle.id);
+    return { user: await loadUser(byGoogle.id), created: false };
   }
 
-  const byEmail = db.prepare('SELECT * FROM users WHERE email = ?').get(normalized);
+  const byEmail = await db.get('SELECT * FROM users WHERE email = ?', normalized);
   if (byEmail) {
     if (byEmail.google_id && byEmail.google_id !== sub) {
       const error = new Error('An account with that email already exists');
@@ -602,30 +687,39 @@ export function findOrCreateGoogleUser({ googleId, email, name }) {
     // address with a password they know. Linking Google proves ownership: drop the
     // password and every existing session so only the Google identity can sign in.
     if (!String(byEmail.password_hash || '').startsWith('oauth:')) {
-      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run('oauth:google', byEmail.id);
-      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(byEmail.id);
+      await db.run('UPDATE users SET password_hash = ? WHERE id = ?', 'oauth:google', byEmail.id);
+      await db.run('DELETE FROM sessions WHERE user_id = ?', byEmail.id);
     }
-    db.prepare('UPDATE users SET google_id = ?, name = ?, updated_at = ? WHERE id = ?').run(
+    await db.run(
+      'UPDATE users SET google_id = ?, name = ?, updated_at = ? WHERE id = ?',
       sub,
       nextName,
       nowIso(),
       byEmail.id
     );
-    return { user: loadUser(byEmail.id), created: false };
+    return { user: await loadUser(byEmail.id), created: false };
   }
 
   const id = uuidv4();
   const created = nowIso();
-  db.prepare(
-    'INSERT INTO users (id, email, password_hash, name, google_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, normalized, 'oauth:google', String(name || '').trim(), sub, created, created);
-  claimLegacyStore(id);
-  return { user: loadUser(id), created: true };
+  await db.run(
+    'INSERT INTO users (id, email, password_hash, name, google_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    id,
+    normalized,
+    'oauth:google',
+    String(name || '').trim(),
+    sub,
+    created,
+    created
+  );
+  await claimLegacyStore(id);
+  return { user: await loadUser(id), created: true };
 }
 
-export function createSession(userId) {
+export async function createSession(userId) {
   const id = uuidv4();
-  db.prepare('INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)').run(
+  await db.run(
+    'INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)',
     id,
     userId,
     Date.now() + SESSION_MS,
@@ -634,29 +728,34 @@ export function createSession(userId) {
   return id;
 }
 
-export function getSession(sessionId) {
+export async function getSession(sessionId) {
   if (!sessionId) return null;
-  const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
+  const row = await db.get('SELECT * FROM sessions WHERE id = ?', sessionId);
   if (!row) return null;
   if (row.expires_at < Date.now()) {
-    db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+    await db.run('DELETE FROM sessions WHERE id = ?', sessionId);
     return null;
   }
   return row;
 }
 
-export function deleteSession(sessionId) {
+export async function deleteSession(sessionId) {
   if (!sessionId) return;
-  db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+  await db.run('DELETE FROM sessions WHERE id = ?', sessionId);
 }
 
-export function saveOAuthState(state, userId, platform, extra = {}) {
-  db.prepare(
-    'INSERT OR REPLACE INTO oauth_states (state, user_id, platform, extra_json, created_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(state, userId, platform, JSON.stringify(extra || {}), Date.now());
+export async function saveOAuthState(state, userId, platform, extra = {}) {
+  await db.run(
+    'INSERT OR REPLACE INTO oauth_states (state, user_id, platform, extra_json, created_at) VALUES (?, ?, ?, ?, ?)',
+    state,
+    userId,
+    platform,
+    JSON.stringify(extra || {}),
+    Date.now()
+  );
 }
 
-export function issueOAuthState(userId, platform, extra = {}) {
+export async function issueOAuthState(userId, platform, extra = {}) {
   const payload = {
     u: userId || '',
     p: platform,
@@ -665,17 +764,17 @@ export function issueOAuthState(userId, platform, extra = {}) {
   };
   const state = signValue(payload);
   try {
-    saveOAuthState(state, userId || '', platform, extra);
+    await saveOAuthState(state, userId || '', platform, extra);
   } catch {
-    // Vercel /tmp sqlite can fail across instances; the signed state is enough.
+    // The signed state is enough on its own; the DB row is best-effort.
   }
   return state;
 }
 
-function readOAuthStateRow(state) {
-  const row = db.prepare('SELECT * FROM oauth_states WHERE state = ?').get(state);
+async function readOAuthStateRow(state) {
+  const row = await db.get('SELECT * FROM oauth_states WHERE state = ?', state);
   if (!row) return null;
-  db.prepare('DELETE FROM oauth_states WHERE state = ?').run(state);
+  await db.run('DELETE FROM oauth_states WHERE state = ?', state);
   if (Date.now() - row.created_at > OAUTH_STATE_MS) return null;
   return {
     userId: row.user_id,
@@ -684,13 +783,13 @@ function readOAuthStateRow(state) {
   };
 }
 
-export function consumeOAuthState(state) {
+export async function consumeOAuthState(state) {
   if (!state) return null;
   try {
-    const row = readOAuthStateRow(state);
+    const row = await readOAuthStateRow(state);
     if (row) return row;
   } catch {
-    // Fall through to the signed token when sqlite is empty or ephemeral.
+    // Fall through to the signed token when the DB row is missing or stale.
   }
   const payload = unsignValue(state, OAUTH_STATE_MS);
   if (!payload?.p) return null;
@@ -713,7 +812,7 @@ function serializeActivityDetail(detail) {
   }
 }
 
-export function appendActivity(userId, entry = {}) {
+export async function appendActivity(userId, entry = {}) {
   if (!userId || !entry.message) return null;
   const row = {
     id: entry.id || uuidv4(),
@@ -724,35 +823,47 @@ export function appendActivity(userId, entry = {}) {
     message: String(entry.message).slice(0, 2000),
     detail_json: serializeActivityDetail(entry.detail),
   };
-  db.prepare(`
-    INSERT OR REPLACE INTO activity_logs (id, user_id, created_at, type, source, message, detail_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(row.id, row.user_id, row.created_at, row.type, row.source, row.message, row.detail_json);
+  await db.run(
+    `INSERT OR REPLACE INTO activity_logs (id, user_id, created_at, type, source, message, detail_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    row.id,
+    row.user_id,
+    row.created_at,
+    row.type,
+    row.source,
+    row.message,
+    row.detail_json
+  );
 
-  const count = db.prepare('SELECT COUNT(*) AS n FROM activity_logs WHERE user_id = ?').get(userId)?.n || 0;
+  const countRow = await db.get('SELECT COUNT(*) AS n FROM activity_logs WHERE user_id = ?', userId);
+  const count = countRow?.n || 0;
   if (count > ACTIVITY_LIMIT) {
-    db.prepare(`
-      DELETE FROM activity_logs
-      WHERE id IN (
-        SELECT id FROM activity_logs
-        WHERE user_id = ?
-        ORDER BY created_at ASC
-        LIMIT ?
-      )
-    `).run(userId, count - ACTIVITY_LIMIT);
+    await db.run(
+      `DELETE FROM activity_logs
+       WHERE id IN (
+         SELECT id FROM activity_logs
+         WHERE user_id = ?
+         ORDER BY created_at ASC
+         LIMIT ?
+       )`,
+      userId,
+      count - ACTIVITY_LIMIT
+    );
   }
   return row.id;
 }
 
-export function listActivity(userId, limit = 400) {
+export async function listActivity(userId, limit = 400) {
   if (!userId) return [];
-  const rows = db.prepare(`
-    SELECT id, created_at, type, source, message, detail_json
-    FROM activity_logs
-    WHERE user_id = ?
-    ORDER BY created_at ASC
-    LIMIT ?
-  `).all(userId, Math.min(Math.max(Number(limit) || 400, 1), ACTIVITY_LIMIT));
+  const rows = await db.all(
+    `SELECT id, created_at, type, source, message, detail_json
+     FROM activity_logs
+     WHERE user_id = ?
+     ORDER BY created_at ASC
+     LIMIT ?`,
+    userId,
+    Math.min(Math.max(Number(limit) || 400, 1), ACTIVITY_LIMIT)
+  );
   return rows.map((row) => {
     let detail = null;
     if (row.detail_json) {
@@ -773,40 +884,42 @@ export function listActivity(userId, limit = 400) {
   });
 }
 
-export function clearActivity(userId) {
+export async function clearActivity(userId) {
   if (!userId) return;
-  db.prepare('DELETE FROM activity_logs WHERE user_id = ?').run(userId);
+  await db.run('DELETE FROM activity_logs WHERE user_id = ?', userId);
 }
 
 const FAILURE_ID = /^[0-9a-zA-Z_-]{8,80}$/;
 
-export function hasListingFailure(userId, failureId) {
+export async function hasListingFailure(userId, failureId) {
   if (!userId || !FAILURE_ID.test(String(failureId || ''))) return false;
   const marker = `"failureId":"${failureId}"`;
-  const row = db.prepare(`
-    SELECT id FROM activity_logs
-    WHERE user_id = ? AND instr(detail_json, ?) > 0
-    LIMIT 1
-  `).get(userId, marker);
+  const row = await db.get(
+    `SELECT id FROM activity_logs
+     WHERE user_id = ? AND instr(detail_json, ?) > 0
+     LIMIT 1`,
+    userId,
+    marker
+  );
   return Boolean(row);
 }
 
-function claimLegacyStore(userId) {
-  const migrated = db.prepare('SELECT value FROM meta WHERE key = ?').get('migrated_store');
+async function claimLegacyStore(userId) {
+  const migrated = await db.get('SELECT value FROM meta WHERE key = ?', 'migrated_store');
   if (migrated) return;
   try {
     if (!fs.existsSync(STORE_FILE)) {
-      db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run('migrated_store', nowIso());
+      await db.run('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'migrated_store', nowIso());
       return;
     }
     const data = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
     if (Array.isArray(data.listings)) {
       for (const listing of data.listings) {
-        if (listing?.id) upsertListing(userId, listing);
+        if (listing?.id) await upsertListing(userId, listing);
       }
     }
   } catch (error) {
     console.warn('Could not migrate local store.json:', error.message);
   }
-  db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run('migrated_store', nowIso());
+  await db.run('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', 'migrated_store', nowIso());
 }

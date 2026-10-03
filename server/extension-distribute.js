@@ -96,7 +96,7 @@ export function mapDepopCondition(condition) {
 // Job persistence (audit trail; mirrors the grailed_jobs pattern).
 // ---------------------------------------------------------------------------
 
-db.exec(`
+await db.exec(`
   CREATE TABLE IF NOT EXISTS extension_distribution_jobs (
     id TEXT PRIMARY KEY,
     marketplace TEXT NOT NULL,
@@ -111,36 +111,36 @@ db.exec(`
 `);
 
 const jobStore = {
-  insert(job) {
-    db.prepare(
+  async insert(job) {
+    await db.run(
       `INSERT INTO extension_distribution_jobs
          (id, marketplace, user_id, status, title, price, payload_json, created_at, updated_at)
-       VALUES (@id, @marketplace, @userId, @status, @title, @price, @payloadJson, @createdAt, @updatedAt)`
-    ).run({
-      id: job.id,
-      marketplace: job.marketplace,
-      userId: job.userId || null,
-      status: job.status || 'pending',
-      title: job.title || null,
-      price: job.price ?? null,
-      payloadJson: job.payloadJson || null,
-      createdAt: job.createdAt || new Date().toISOString(),
-      updatedAt: job.updatedAt || new Date().toISOString(),
-    });
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      job.id,
+      job.marketplace,
+      job.userId || null,
+      job.status || 'pending',
+      job.title || null,
+      job.price ?? null,
+      job.payloadJson || null,
+      job.createdAt || new Date().toISOString(),
+      job.updatedAt || new Date().toISOString()
+    );
     return job.id;
   },
-  get(id) {
-    const row = db
-      .prepare('SELECT * FROM extension_distribution_jobs WHERE id = ?')
-      .get(String(id || ''));
+  async get(id) {
+    const row = await db.get('SELECT * FROM extension_distribution_jobs WHERE id = ?', String(id || ''));
     return row || null;
   },
-  updateStatus(id, status, extra = {}) {
-    db.prepare(
+  async updateStatus(id, status, extra = {}) {
+    await db.run(
       `UPDATE extension_distribution_jobs
-         SET status = @status, updated_at = @updatedAt
-       WHERE id = @id`
-    ).run({ id: String(id || ''), status, updatedAt: new Date().toISOString() });
+         SET status = ?, updated_at = ?
+       WHERE id = ?`,
+      status,
+      new Date().toISOString(),
+      String(id || '')
+    );
     return jobStore.get(id);
   },
 };
@@ -159,12 +159,12 @@ export function __setJobStore(store) {
 }
 
 /** Read back a queued distribution job. */
-export function getExtensionJob(jobId) {
+export async function getExtensionJob(jobId) {
   return jobStore.get(String(jobId || ''));
 }
 
 /** Update a distribution job's status (called when the extension reports back). */
-export function markExtensionJob(jobId, status) {
+export async function markExtensionJob(jobId, status) {
   return jobStore.updateStatus(String(jobId || ''), status);
 }
 
@@ -205,7 +205,7 @@ function failed(marketplace, message) {
  * the browser knows whether the extension is actually installed, so the
  * installed-extension fallback ("guided") is decided page-side.
  */
-export function distributeViaExtension(marketplace, payload = {}, ctx = {}) {
+export async function distributeViaExtension(marketplace, payload = {}, ctx = {}) {
   const config = EXTENSION_DISTRIBUTION_STORES[marketplace];
   if (!config) return failed(marketplace, `Unsupported marketplace: ${marketplace}`);
 
@@ -237,7 +237,7 @@ export function distributeViaExtension(marketplace, payload = {}, ctx = {}) {
     dashboardOrigin: String(ctx.dashboardOrigin || ''),
     listing,
   };
-  jobStore.insert({
+  await jobStore.insert({
     id: jobId,
     marketplace,
     userId: ctx.userId || null,
